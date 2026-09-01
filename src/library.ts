@@ -87,10 +87,11 @@ export const BUILT_INS: BuiltIn[] = [
   {
     id: 'z-ladder', group: 'zones', label: 'Ladder',
     build: () => zonePlan('Zone ladder', [
-      { zone: 0, minutes: 5 },
+      { zone: 0, minutes: 5, label: 'Warm-up' },
       { zone: 1, minutes: 20 },
       { zone: 3, minutes: 3 },
       { zone: 4, minutes: 2 },
+      { zone: 0, minutes: 5, label: 'Cool-down' },
     ]),
   },
   {

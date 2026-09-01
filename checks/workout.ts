@@ -176,6 +176,12 @@ console.log('\nwire:')
 console.log('\nbuilt-in library:')
 {
   check('every group is represented', new Set(BUILT_INS.map(b => b.group)).size === 4)
+  // Nothing should leave you standing still at the top of the effort range.
+  for (const entry of BUILT_INS.filter(b => b.group === 'zones')) {
+    const steps = entry.build('mi').steps
+    const last = steps[steps.length - 1]!.holdZone ?? 0
+    check(`${entry.label} ends easy`, last <= 1, `ends on Z${last + 1}`)
+  }
   check('ids are unique', new Set(BUILT_INS.map(b => b.id)).size === BUILT_INS.length)
 
   let bad = 0
@@ -202,11 +208,11 @@ console.log('\nbuilt-in library:')
 
   // The one Will asked for by name.
   const ladder = BUILT_INS.find(b => b.id === 'z-ladder')!.build('mi')
-  check('Ladder is 5 Z1 / 20 Z2 / 3 Z4 / 2 Z5',
-    ladder.steps.length === 4
+  check('Ladder is 5 Z1 / 20 Z2 / 3 Z4 / 2 Z5 / 5 Z1 down',
+    ladder.steps.length === 5
     && ladder.steps.every(s => s.target.by === 'time')
-    && ladder.steps.map(s => s.target.by === 'time' ? s.target.seconds / 60 : 0).join(',') === '5,20,3,2'
-    && ladder.steps.map(s => s.holdZone).join(',') === '0,1,3,4',
+    && ladder.steps.map(s => s.target.by === 'time' ? s.target.seconds / 60 : 0).join(',') === '5,20,3,2,5'
+    && ladder.steps.map(s => s.holdZone).join(',') === '0,1,3,4,0',
     JSON.stringify(ladder.steps.map(s => [s.holdZone, s.target])))
 }
 
