@@ -101,10 +101,19 @@ actor CloudRelay {
 
 /// The one snapshot everything reads: the local HTTP server serves it, the
 /// cloud relay posts it, and the UI shows it.
+///
+/// The UI reads `latest` on the main actor. The local server reads on its own
+/// dispatch queue, so what it needs — the encoded body — is kept behind a lock
+/// rather than behind the actor. Asserting main-actor isolation from the server's
+/// queue would trap on the first request.
 @MainActor
 final class SnapshotStore: ObservableObject {
     @Published private(set) var latest: Snapshot?
     @Published private(set) var updatedAt: Date?
+
+    private static let emptyBody = Data("{\"snapshot\":null}".utf8)
+    private let lock = NSLock()
+    nonisolated(unsafe) private var cachedBody: Data = SnapshotStore.emptyBody
 
     /// Bumped by whoever produces snapshots, so a replay cannot go backwards.
     func accept(_ snapshot: Snapshot) {
@@ -113,6 +122,10 @@ final class SnapshotStore: ObservableObject {
         }
         latest = snapshot
         updatedAt = Date()
+
+        struct Body: Encodable { let snapshot: Snapshot }
+        let encoded = (try? JSONEncoder().encode(Body(snapshot: snapshot))) ?? Self.emptyBody
+        lock.withLock { cachedBody = encoded }
     }
 
     var isFresh: Bool {
@@ -120,12 +133,8 @@ final class SnapshotStore: ObservableObject {
         return Date().timeIntervalSince(updatedAt) < RelayConfig.staleAfter
     }
 
-    var jsonBody: Data {
-        struct Body: Encodable {
-            let snapshot: Snapshot?
-            let servedAt: Double
-        }
-        let body = Body(snapshot: latest, servedAt: Date().timeIntervalSince1970 * 1000)
-        return (try? JSONEncoder().encode(body)) ?? Data("{\"snapshot\":null}".utf8)
+    /// Safe from any thread. This is what `LocalServer` serves.
+    nonisolated func bodyForServer() -> Data {
+        lock.withLock { cachedBody }
     }
 }

@@ -68,11 +68,8 @@ final class MirrorReceiver: NSObject, ObservableObject {
 
     private func startLocalServer() {
         guard localServer == nil else { return }
-        let server = LocalServer { [store] in
-            // Hop to the main actor for the read; the body provider is called on
-            // the server's own queue.
-            MainActor.assumeIsolated { store.jsonBody }
-        }
+        // Called on the server's own queue, so it reads the lock-guarded copy.
+        let server = LocalServer { [store] in store.bodyForServer() }
         server.start()
         localServer = server
         // The listener goes ready asynchronously.
