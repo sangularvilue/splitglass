@@ -5,8 +5,8 @@
   "version": "1.0.0",
   "min_app_version": "2.2.9",
   "min_sdk_version": "0.0.14",
-  "tagline": "Your Apple Watch workout, on the glass in front of you.",
-  "description": "A live heads-up display for an Apple Watch workout. Heart rate, heart-rate zone, time in zone, distance, pace, energy and elapsed time all come from HealthKit on the watch, so the numbers are identical on a treadmill and on a road, and the zones are your own zones out of Health -- the same boundaries and the same accumulated time the Fitness app shows. Set a plan on the phone and the glasses count down each split or interval, with the pace band to hold. Outdoors, a breadcrumb map draws the track you have run, your heading on it, and an optional GPX route to follow. Long press for Lap, screen, units and plan controls; the left temple steps back through screens and the right steps forward.",
+  "tagline": "Apple Watch workout HUD.",
+  "description": "Live Apple Watch workout data on the G2.\n\nFour screens: run, splits, heart-rate zones, map.\n\nHeart rate, zone, time in zone, distance, pace, energy and elapsed time come from HealthKit, so indoor and outdoor are the same. Zones are the ones set in Health. The map is outdoor only and can follow a GPX route.\n\nRequires the Splitglass iPhone app and an Apple Watch.\n\nLong press: lap, screen, units, plan. Left temple back, right temple forward.",
   "author": "Will Grannis",
   "entrypoint": "index.html",
   "permissions": [

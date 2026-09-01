@@ -38,10 +38,6 @@ struct PhoneRootView: View {
                     if receiver.settings.isPaired {
                         LabeledContent("Paired as", value: receiver.settings.pairCode)
                     }
-
-                    Text("The code is on the Splitglass plugin's own screen, under \u{201C}Pair the phone\u{201D}.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
 
                 Section("Status") {
@@ -80,27 +76,12 @@ struct PhoneRootView: View {
                         get: { receiver.settings.useCloudRelay },
                         set: { value in receiver.updateSettings { $0.useCloudRelay = value } }
                     ))
-                    Text("""
-                    Off, readings stay on this phone and the glasses read them over \
-                    loopback — which needs nothing but Bluetooth, and works with no \
-                    signal at all. On, they are also posted to \
-                    \(receiver.settings.baseURL.host ?? "the relay"), which is what the \
-                    glasses fall back to when the plugin is not allowed to open a \
-                    plain-http connection.
-                    """)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    LabeledContent("Host", value: receiver.settings.baseURL.host ?? "—")
                 }
 
-                Section("Heart-rate zones") {
-                    Text("""
-                    Zones come from Health, so the glasses show the same boundaries and \
-                    the same time-in-zone the Fitness app will. The two numbers below are \
-                    used only if Health has no zones for you at all.
-                    """)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
+                // The two values below are a fallback: they are ignored whenever
+                // Health has zones of its own. See ios/README.md.
+                Section("Zone fallback") {
                     Stepper(value: Binding(
                         get: { receiver.settings.maxHeartRate },
                         set: { value in receiver.updateSettings { $0.maxHeartRate = value } }

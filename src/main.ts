@@ -87,7 +87,6 @@ function shell(): string {
     <div class="hd-mark">▚▚</div>
     <div>
       <h1>Splitglass</h1>
-      <p class="hd-sub">HealthKit on your wrist, on the glass in front of you</p>
     </div>
     <div class="hd-live" id="hd-live">—</div>
   </header>
@@ -97,8 +96,6 @@ function shell(): string {
     <div class="pair">
       <div class="pair-code" id="pair-code">------</div>
       <div class="pair-note">
-        Enter this in <b>Splitglass</b> on the iPhone. It scopes the relay, so only
-        your own workout reaches these glasses.
         <div class="pair-actions">
           <button class="btn" id="pair-copy">Copy</button>
           <button class="btn ghost" id="pair-new">New code</button>
@@ -150,10 +147,9 @@ function shell(): string {
     <div class="route">
       <label class="filebtn">Load GPX<input id="gpx" type="file" accept=".gpx,application/gpx+xml,text/xml"></label>
       <button class="btn ghost" id="route-clear">Clear route</button>
-      <span class="fine" id="route-note">No route loaded</span>
+      <span class="fine" id="route-note">No route</span>
     </div>
     <div class="mapwrap"><canvas id="mapview" width="384" height="192"></canvas></div>
-    <p class="fine">Drawn exactly as the glasses draw it, then reduced to 16 grey levels.</p>
   </section>
 
   <section class="card">
@@ -229,7 +225,7 @@ function paintLive(): void {
   if (step) {
     const p = view.progress
     if (!p) {
-      step.innerHTML = `<span class="fine">${view.planComplete ? 'Plan complete.' : 'No step running — start a workout on the watch.'}</span>`
+      step.innerHTML = `<span class="fine">${view.planComplete ? 'Plan complete' : 'No step'}</span>`
     } else {
       const left = p.step.target.by === 'time'
         ? `${fmtCountdown(p.secondsLeft)} left`
@@ -245,7 +241,7 @@ function paintLive(): void {
   if (zonesEl) {
     const z = view.zones
     if (!z) {
-      zonesEl.innerHTML = '<span class="fine">Waiting for a heart rate.</span>'
+      zonesEl.innerHTML = '<span class="fine">No heart rate</span>'
     } else {
       const longest = Math.max(1, ...z.durations)
       zonesEl.innerHTML = z.durations.map((seconds, i) => `
@@ -259,9 +255,8 @@ function paintLive(): void {
     const note = $('zones-note')
     if (note) {
       note.textContent = !z ? ''
-        : z.source === 'apple'
-          ? 'Your own zones, straight out of Health — the same boundaries and the same accumulated time the Fitness app will show for this workout.'
-          : `Estimated from a maximum of ${settings.maxHeartRate} bpm. These are not Apple's zones; they appear only because HealthKit sent none (an OS without the workout-zones API, or no heart-rate source).`
+        : z.source === 'apple' ? 'Health'
+          : `Estimated · max ${settings.maxHeartRate}`
     }
   }
 }
@@ -318,7 +313,7 @@ function paintMapPreview(): void {
   if (!drawn) {
     ctx.fillStyle = '#4e7a4c'
     ctx.font = '12px ui-monospace, monospace'
-    ctx.fillText('no track yet — outdoor workouts only', 12, 24)
+    ctx.fillText('no track', 12, 24)
     return
   }
   // Paint the reduced 4-bit data, not the source canvas: this is what the
@@ -343,7 +338,7 @@ function paintMapPreview(): void {
   if (note) {
     const off2 = track.offRouteMetres()
     note.textContent = `${track.points().length} fixes · ${fmtDistance(track.gpsMetres(), settings.units)} ${settings.units}`
-      + (track.route().length ? ` · route ${track.route().length} points${off2 != null ? ` · ${Math.round(off2)}m off` : ''}` : ' · no route')
+      + (track.route().length ? ` · route ${track.route().length}${off2 != null ? ` · ${Math.round(off2)}m off` : ''}` : '')
   }
 }
 

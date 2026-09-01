@@ -126,12 +126,12 @@ function transportGlyph(kind: TransportKind): string {
     case 'local': return '◉ phone'
     case 'stream': return '◉ live'
     case 'poll': return '◍ poll'
-    default: return '○ waiting'
+    default: return '○ —'
   }
 }
 
 function stateWord(snap: Snapshot | null): string {
-  if (!snap) return 'no workout'
+  if (!snap) return 'idle'
   switch (snap.state) {
     case 'running': return snap.indoor ? 'indoor' : 'running'
     case 'paused': return 'paused'
@@ -147,8 +147,8 @@ function stateWord(snap: Snapshot | null): string {
  */
 function statusLine(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings): string {
   const stale = view.staleSeconds
-  const staleNote = !Number.isFinite(stale) ? 'no data yet'
-    : stale > 5 ? `last reading ${Math.round(stale)}s ago`
+  const staleNote = !Number.isFinite(stale) ? 'no data'
+    : stale > 5 ? `${Math.round(stale)}s ago`
       : ''
   const parts = [transportGlyph(kind), stateWord(view.snapshot), settings.planName]
   if (staleNote) parts.push(staleNote)
@@ -192,7 +192,7 @@ export function runScreen(view: WorkoutView, kind: TransportKind, settings: Spli
     wide(7, 'sg-step', STEP_Y, STEP_H, stepBlock(view, settings), L.primary),
     wide(8, 'sg-foot', FOOT_Y, TILE_H,
       fitLines([
-        view.zones ? zoneSparkline(view.zones) : 'no heart rate',
+        view.zones ? zoneSparkline(view.zones) : 'No HR',
         statusLine(view, kind, settings),
       ], SCREEN_W - 12),
       L.chrome, true),
@@ -208,9 +208,7 @@ export function runScreen(view: WorkoutView, kind: TransportKind, settings: Spli
 function stepBlock(view: WorkoutView, settings: SplitglassSettings): string {
   const p = view.progress
   if (!p) {
-    return view.planComplete
-      ? 'Plan complete\nkeep going, or Restart plan from the menu'
-      : 'No step running\nstart a workout on the watch'
+    return view.planComplete ? 'Plan complete' : 'No workout'
   }
 
   const u = settings.units
@@ -252,7 +250,7 @@ function progressGlyphs(fraction: number, width: number): string {
 export function splitsScreen(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings): ScreenSpec {
   const u = settings.units
   const items = view.splits.length === 0
-    ? ['No splits yet — Lap from the menu, or let a step finish']
+    ? ['No splits']
     : view.splits.slice(-20).map(s => {
       const pace = fmtPace(s.paceSecPerKm, u)
       const hr = s.avgHeartRate != null ? `${s.avgHeartRate}` : '—'
@@ -262,7 +260,7 @@ export function splitsScreen(view: WorkoutView, kind: TransportKind, settings: S
   return {
     screen: 'splits',
     text: [
-      wide(1, 'sg-splits-h', 2, LINE, fit(`Splits — ${view.splits.length} · ${settings.planName}`, SCREEN_W - 12), L.secondary),
+      wide(1, 'sg-splits-h', 2, LINE, fit(`Splits ${view.splits.length} · ${settings.planName}`, SCREEN_W - 12), L.secondary),
       wide(8, 'sg-splits-f', 252, LINE, fit(statusLine(view, kind, settings), SCREEN_W - 12), L.chrome),
     ],
     lists: [{
@@ -293,8 +291,8 @@ export function splitsScreen(view: WorkoutView, kind: TransportKind, settings: S
 export function zonesScreen(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings): ScreenSpec {
   const z = view.zones
   const header = z
-    ? `Heart-rate zones — ${z.source === 'apple' ? 'yours, from Health' : 'estimated from max ' + settings.maxHeartRate}`
-    : 'Heart-rate zones — waiting for a heart rate'
+    ? `Zones · ${z.source === 'apple' ? 'Health' : 'est. max ' + settings.maxHeartRate}`
+    : 'Zones · no HR'
 
   const items: string[] = []
   if (z) {
@@ -305,7 +303,7 @@ export function zonesScreen(view: WorkoutView, kind: TransportKind, settings: Sp
       items.push(fit(`${here} ${zoneLabel(i)}  ${zoneRangeLabel(z, i).padEnd(8)} ${fmtDuration(seconds).padStart(6)}  ${zoneBar(seconds, longest, 12)}`, SCREEN_W - 36))
     }
   } else {
-    items.push('No zone data yet')
+    items.push('No zones')
   }
 
   return {
@@ -338,8 +336,8 @@ export function mapScreen(
   const text: TextBox[] = [
     wide(1, 'sg-map-h', 2, LINE,
       fit(hasMap
-        ? `Track · scale ${map.scaleMetres! >= 1000 ? `${map.scaleMetres! / 1000}k` : `${map.scaleMetres}`}m · north up`
-        : snap?.indoor ? 'Indoor workout — no track to draw' : 'Waiting for GPS…', SCREEN_W - 12),
+        ? `${map.scaleMetres! >= 1000 ? `${map.scaleMetres! / 1000}k` : `${map.scaleMetres}`}m · N↑`
+        : snap?.indoor ? 'Indoor' : 'No GPS', SCREEN_W - 12),
       L.chrome),
     wide(7, 'sg-map-a', 140, LINE,
       fit(`${fmtDistance(snap?.distance ?? null, u)} ${u}  ·  ${fmtDuration(snap?.elapsed ?? null)}  ·  ${fmtPace(snap?.paceSecPerKm ?? null, u)}${paceUnitLabel(u)}`, SCREEN_W - 12),
@@ -367,7 +365,7 @@ function mapFootLines(
 ): string {
   const bits: string[] = []
   if (map.offRouteMetres != null) {
-    bits.push(map.offRouteMetres <= 25 ? 'on route' : `${Math.round(map.offRouteMetres)}m off route`)
+    bits.push(map.offRouteMetres <= 25 ? 'on route' : `${Math.round(map.offRouteMetres)}m off`)
   }
   // GPS distance is shown next to HealthKit's only when they disagree enough to
   // matter — a quiet cross-check rather than a second number to read.
