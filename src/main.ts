@@ -31,7 +31,7 @@ const esc = (s: unknown) => String(s).replace(/[&<>"']/g, c => (
 
 let settings: SplitglassSettings = loadSettings()
 let plan: Plan = loadPlan()
-let view: WorkoutView = { snapshot: null, staleSeconds: Infinity, zones: null, avgPaceSecPerKm: null, progress: null, splits: [], planComplete: false }
+let view: WorkoutView = { snapshot: null, staleSeconds: Infinity, zones: null, paceSecPerKm: null, stepPaceSecPerKm: null, avgPaceSecPerKm: null, zoneDriftSeconds: 0, progress: null, splits: [], planComplete: false }
 let transportKind: TransportKind = 'none'
 let transportDetail = 'starting'
 
@@ -46,12 +46,44 @@ function log(msg: string): void {
 
 const track = createTrack()
 
+/** One line saying what to hold for a step, for the flash and the summary. */
+function holdText(step: Plan['steps'][number]): string {
+  const u = settings.units
+  if (step.holdPaceSecPerKm) return `hold ${fmtPace(step.holdPaceSecPerKm.from, u)}–${fmtPace(step.holdPaceSecPerKm.to, u)}${paceUnitLabel(u)}`
+  if (step.holdZone != null) return `hold ${zoneLabel(Math.min(step.holdZone, (view.zones?.count ?? 5) - 1))}`
+  return step.easy ? 'easy' : ''
+}
+
 const engine = createEngine({
   getPlan: () => plan,
   getMaxHeartRate: () => settings.maxHeartRate,
   onSplit: (s) => log(`Split ${s.index} — ${s.label} ${fmtDuration(s.seconds)} ${fmtShortDistance(s.metres)}`),
-  onStepChange: (p) => { if (p) log(`Step ${p.index + 1}/${p.total} — ${p.step.label}`) },
+  onStepChange: (p) => {
+    // A step change is the event a HUD with no haptics most needs to make
+    // visible, so it gets three seconds of the whole display.
+    if (p) {
+      log(`Step ${p.index + 1}/${p.total} — ${p.step.label}`)
+      void glasses.flash([p.step.label, holdText(p.step), `${p.index + 1} / ${p.total}`])
+    } else {
+      void glasses.flash(['Plan complete'])
+    }
+  },
 })
+
+// Zone drift: after 30 s out of the target zone, say so once, then again only
+// after you have been back in it.
+let driftFlashed = false
+function checkDrift(): void {
+  if (view.zoneDriftSeconds === 0) { driftFlashed = false; return }
+  if (view.zoneDriftSeconds < 30 || driftFlashed) return
+  const p = view.progress
+  const z = view.zones
+  if (!p || p.step.holdZone == null || !z || z.currentIndex == null) return
+  const target = Math.min(p.step.holdZone, z.count - 1)
+  const verb = z.currentIndex > target ? 'ease' : 'push'
+  driftFlashed = true
+  void glasses.flash([`${zoneLabel(target)} · ${verb}`, `${Math.round(view.zoneDriftSeconds)}s out of zone`], 2500)
+}
 
 const glasses = createGlasses({
   log,
@@ -120,6 +152,13 @@ function shell(): string {
     <div class="card-h">Heart-rate zones</div>
     <div class="zones" id="live-zones"></div>
     <p class="fine" id="zones-note"></p>
+  </section>
+
+  <section class="card" id="summary" hidden>
+    <div class="card-h">Summary <span class="card-h-sub" id="sum-name"></span></div>
+    <div class="grid" id="sum-grid"></div>
+    <div class="zones" id="sum-zones"></div>
+    <div class="tablewrap"><table class="st" id="sum-splits"></table></div>
   </section>
 
   <section class="card">
@@ -230,7 +269,8 @@ function paintLive(): void {
       liveTile('Distance', fmtDistance(s?.distance ?? null, u), ` ${u}`),
       liveTile('Elapsed', fmtDuration(s?.elapsed ?? null)),
       liveTile('Heart rate', s?.heartRate != null ? String(Math.round(s.heartRate)) : '—', ' bpm'),
-      liveTile('Pace', fmtPace(s?.paceSecPerKm ?? null, u), paceUnitLabel(u)),
+      liveTile('Pace', fmtPace(view.paceSecPerKm, u), paceUnitLabel(u)),
+      liveTile('Step pace', fmtPace(view.stepPaceSecPerKm, u), paceUnitLabel(u)),
       liveTile('Average', fmtPace(view.avgPaceSecPerKm, u), paceUnitLabel(u)),
       liveTile('Energy', s?.energy != null ? String(Math.round(s.energy)) : '—', ' kcal'),
       liveTile('Cadence', s?.cadence != null ? String(Math.round(s.cadence)) : '—', ' spm'),
@@ -324,6 +364,73 @@ function paintGuide(): void {
     <p class="fine">${esc(ZONE_GUIDE_NOTE)}</p>`
 }
 
+/**
+ * Shown once the watch reports the workout ended, until a new one starts. The
+ * same numbers as the live view, frozen, plus every split and the zone totals.
+ */
+function paintSummary(): void {
+  const card = $('summary')
+  if (!card) return
+  const s = view.snapshot
+  const ended = s?.state === 'ended'
+  card.hidden = !ended
+  if (!ended || !s) return
+
+  const u = settings.units
+  const name = $('sum-name')
+  if (name) name.textContent = settings.planName
+
+  const hrWeighted = view.splits.reduce((acc, sp) => sp.avgHeartRate != null
+    ? { sum: acc.sum + sp.avgHeartRate * sp.seconds, sec: acc.sec + sp.seconds }
+    : acc, { sum: 0, sec: 0 })
+  const avgHr = hrWeighted.sec > 0 ? Math.round(hrWeighted.sum / hrWeighted.sec) : null
+
+  const grid = $('sum-grid')
+  if (grid) {
+    grid.innerHTML = [
+      liveTile('Distance', fmtDistance(s.distance, u), ` ${u}`),
+      liveTile('Time', fmtDuration(s.elapsed)),
+      liveTile('Avg pace', fmtPace(view.avgPaceSecPerKm, u), paceUnitLabel(u)),
+      liveTile('Avg HR', avgHr != null ? String(avgHr) : '—', ' bpm'),
+      liveTile('Energy', s.energy != null ? String(Math.round(s.energy)) : '—', ' kcal'),
+      liveTile('Splits', String(view.splits.length)),
+    ].join('')
+  }
+
+  const zonesEl = $('sum-zones')
+  if (zonesEl) {
+    const z = view.zones
+    if (!z) {
+      zonesEl.innerHTML = ''
+    } else {
+      const total = Math.max(1, z.durations.reduce((a, b) => a + b, 0))
+      const longest = Math.max(1, ...z.durations)
+      zonesEl.innerHTML = z.durations.map((seconds, i) => `
+        <div class="zrow">
+          <span class="zn">${esc(zoneLabel(i))}</span>
+          <span class="zr">${esc(zoneRangeLabel(z, i))}</span>
+          <span class="zb"><i style="width:${Math.round((seconds / longest) * 100)}%"></i></span>
+          <span class="zt">${esc(fmtDuration(seconds))} <em>${Math.round((seconds / total) * 100)}%</em></span>
+        </div>`).join('')
+    }
+  }
+
+  const table = $('sum-splits')
+  if (table) {
+    table.innerHTML = view.splits.length === 0 ? '' : `
+      <thead><tr><th>#</th><th>Step</th><th>Time</th><th>Dist</th><th>Pace</th><th>HR</th></tr></thead>
+      <tbody>${view.splits.map(sp => `
+        <tr>
+          <td>${sp.index}</td>
+          <td>${esc(sp.label)}</td>
+          <td>${esc(fmtDuration(sp.seconds))}</td>
+          <td>${esc(fmtShortDistance(sp.metres))}</td>
+          <td>${esc(fmtPace(sp.paceSecPerKm, u))}</td>
+          <td>${sp.avgHeartRate ?? '—'}</td>
+        </tr>`).join('')}</tbody>`
+  }
+}
+
 function paintPlan(): void {
   const name = $('plan-name')
   if (name) name.textContent = plan.name
@@ -408,6 +515,7 @@ function paintMapPreview(): void {
 function paint(): void {
   paintStatus()
   paintLive()
+  paintSummary()
   paintPlan()
   paintSaved()
   paintMirror()
@@ -643,6 +751,7 @@ async function boot(): Promise<void> {
   // map runs on its own slower timer inside the glasses controller.
   window.setInterval(() => {
     view = engine.view()
+    checkDrift()
     paint()
     void glasses.refresh()
   }, 1000)

@@ -173,6 +173,82 @@ console.log('\nwire:')
 }
 
 // ── The library ──
+// ── Smoothing, step pace, drift ──
+console.log('\npace smoothing:')
+{
+  const engine = createEngine({ getPlan: () => openPlan(), getMaxHeartRate: () => 185 })
+  const t0 = Date.now()
+  let view = engine.view()
+  // Stride-to-stride jitter: alternate 280 and 320 s/km once a second.
+  for (let t = 0; t <= 60; t++) {
+    view = engine.ingest(snap({ seq: t, elapsed: t, distance: t * 3.3, paceSecPerKm: t % 2 ? 320 : 280, at: t0 + t * 1000 }))
+  }
+  check('jitter of ±20 s/km smooths to within 5 of the mean',
+    view.paceSecPerKm != null && Math.abs(view.paceSecPerKm - 300) < 5, `${view.paceSecPerKm?.toFixed(1)}`)
+
+  // A real change of pace: 300 → 240. Within 15 s (2.5τ) it should be most of the way.
+  for (let t = 61; t <= 76; t++) {
+    view = engine.ingest(snap({ seq: t, elapsed: t, distance: t * 3.3, paceSecPerKm: 240, at: t0 + t * 1000 }))
+  }
+  check('a genuine pace change comes through in ~15 s',
+    view.paceSecPerKm != null && view.paceSecPerKm < 250, `${view.paceSecPerKm?.toFixed(1)}`)
+
+  // Speed drops out for 12 s: the average must lapse rather than freeze.
+  for (let t = 77; t <= 89; t++) {
+    view = engine.ingest(snap({ seq: t, elapsed: t, distance: t * 3.3, paceSecPerKm: null, at: t0 + t * 1000 }))
+  }
+  check('12 s without speed lets the smoothed pace lapse', view.paceSecPerKm === null, String(view.paceSecPerKm))
+}
+
+console.log('\nstep pace:')
+{
+  const plan = intervalPlan({ name: 'x', reps: 2, work: { by: 'time', seconds: 120 }, recovery: null })
+  const engine = createEngine({ getPlan: () => plan, getMaxHeartRate: () => 185 })
+  let view = engine.view()
+  view = engine.ingest(snap({ seq: 1, elapsed: 5, distance: 17 }))
+  check('too little of the step yet → no step pace', view.stepPaceSecPerKm === null)
+  for (let t = 10; t <= 60; t += 5) view = engine.ingest(snap({ seq: t, elapsed: t, distance: t * 3.4 }))
+  check('after 60 s at 3.4 m/s step pace is ~294 s/km',
+    view.stepPaceSecPerKm != null && Math.abs(view.stepPaceSecPerKm - 294) < 3, `${view.stepPaceSecPerKm?.toFixed(0)}`)
+  // Into rep 2 at 4.5 m/s, sampled 25 s in — enough of the step behind it.
+  for (let t = 65; t <= 145; t += 5) view = engine.ingest(snap({ seq: t, elapsed: t, distance: 60 * 3.4 + (t - 60) * 4.5 }))
+  check('step pace restarts with the next step',
+    view.progress?.index === 1 && view.stepPaceSecPerKm != null && view.stepPaceSecPerKm < 240, `${view.stepPaceSecPerKm?.toFixed(0)}`)
+}
+
+console.log('\nzone drift:')
+{
+  const plan = zonePlan('drift', [{ zone: 1, minutes: 10 }])
+  const engine = createEngine({ getPlan: () => plan, getMaxHeartRate: () => 185 })
+  const zonesAt = (i: number) => ({ source: 'apple' as const, count: 5, currentIndex: i, boundaries: [116, 139, 158, 172], durations: [0, 0, 0, 0, 0] })
+  const t0 = Date.now()
+  let view = engine.view()
+  for (let t = 0; t <= 10; t++) view = engine.ingest(snap({ seq: t, elapsed: t, distance: t * 3, zones: zonesAt(1), at: t0 + t * 1000 }))
+  check('in the target zone → no drift', view.zoneDriftSeconds === 0)
+  for (let t = 11; t <= 50; t++) view = engine.ingest(snap({ seq: t, elapsed: t, distance: t * 3, zones: zonesAt(3), at: t0 + t * 1000 }))
+  check('40 s in Z4 against a Z2 target counts ~40 s of drift',
+    Math.abs(view.zoneDriftSeconds - 40) < 1.5, `${view.zoneDriftSeconds.toFixed(1)}`)
+  view = engine.ingest(snap({ seq: 51, elapsed: 51, distance: 153, zones: zonesAt(1), at: t0 + 51_000 }))
+  check('back in zone resets drift to 0', view.zoneDriftSeconds === 0)
+
+  const noTarget = createEngine({ getPlan: () => openPlan(), getMaxHeartRate: () => 185 })
+  const v = noTarget.ingest(snap({ seq: 1, elapsed: 30, distance: 90, zones: zonesAt(4) }))
+  check('no zone target → drift is always 0', v.zoneDriftSeconds === 0)
+}
+
+console.log('\ncomputed-zone accumulator:')
+{
+  const engine = createEngine({ getPlan: () => openPlan(), getMaxHeartRate: () => 180 })
+  const t0 = Date.now()
+  engine.ingest(snap({ seq: 1, elapsed: 1, distance: 3, zones: null, heartRate: 150, at: t0 }))
+  engine.ingest(snap({ seq: 2, elapsed: 2, distance: 6, zones: null, heartRate: 150, at: t0 + 1000 }))
+  const a = engine.view().zones!.durations.slice()
+  engine.view(); engine.view(); engine.view()
+  const b = engine.view().zones!.durations
+  check('reading the view does not add time in zone', a.join(',') === b.join(','), `${a} vs ${b}`)
+  check('one second between readings accrues one second', Math.abs((b[3] ?? 0) - 1) < 0.01, `${b[3]}`)
+}
+
 console.log('\nbuilt-in library:')
 {
   check('every group is represented', new Set(BUILT_INS.map(b => b.group)).size === 4)

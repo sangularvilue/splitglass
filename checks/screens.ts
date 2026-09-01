@@ -20,10 +20,11 @@ import {
 } from '@evenrealities/even_hub_sdk'
 import { getTextWidth, measureTextWrap } from '@evenrealities/pretext'
 
-import { buildScreen, SCREEN_ORDER } from '../src/screens'
+import { buildScreen, flashScreen, SCREEN_ORDER, type ScreenSpec } from '../src/screens'
 import type { GlassesScreen, SplitglassSettings, Snapshot, TransportKind, ZoneState } from '../src/types'
 import type { WorkoutView } from '../src/workout'
 import { createEngine, intervalPlan, zonePlan } from '../src/workout'
+import { BUILT_INS } from '../src/library'
 
 const LINE_HEIGHT = 27
 const SCREEN_W = 576
@@ -129,16 +130,31 @@ const emptyView: WorkoutView = {
   snapshot: null,
   staleSeconds: Infinity,
   zones: null,
+  paceSecPerKm: null,
+  stepPaceSecPerKm: null,
   avgPaceSecPerKm: null,
+  zoneDriftSeconds: 0,
   progress: null,
   splits: [],
   planComplete: false,
 }
 
+/** Three seconds before the end of a one-minute Z2 block: the countdown is up. */
+function countdownView(): WorkoutView {
+  const plan = zonePlan('Countdown', [{ zone: 1, minutes: 1 }, { zone: 3, minutes: 1 }])
+  const engine = createEngine({ getPlan: () => plan, getMaxHeartRate: () => settings.maxHeartRate })
+  let view = engine.view()
+  for (let t = 0; t <= 57; t += 1) view = engine.ingest(snapshot({ seq: t, elapsed: t, distance: t * 3.4 }))
+  return view
+}
+
 // ── Judges ──
 
-function checkSpec(name: string, screen: GlassesScreen, view: WorkoutView, kind: TransportKind, map: Parameters<typeof buildScreen>[4]): void {
-  const spec = buildScreen(screen, view, kind, settings, map)
+function checkSpec(name: string, screen: GlassesScreen, view: WorkoutView, kind: TransportKind, map: Parameters<typeof buildScreen>[4], battery?: number | null): void {
+  judge(name, buildScreen(screen, view, kind, settings, map, battery))
+}
+
+function judge(name: string, spec: ScreenSpec): void {
 
   const textObject = spec.text.map(t => new TextContainerProperty({
     containerID: t.id, containerName: t.name, content: t.content,
@@ -274,6 +290,29 @@ checkSpec('run (zone step, in zone)', 'run', zoneStepView(1), 'stream', mapReady
 checkSpec('run (zone step, ease off)', 'run', zoneStepView(4), 'stream', mapReady)
 checkSpec('run (zone step, push)', 'run', zoneStepView(0), 'stream', mapReady)
 checkSpec('splits (zone workout)', 'splits', zoneStepView(1), 'stream', mapReady)
+
+console.log('\nbattery, countdown, flash:')
+{
+  const withBattery = buildScreen('run', busyView(), 'stream', settings, mapReady, 62)
+  const foot = withBattery.text.find(t => t.name === 'sg-foot')?.content ?? ''
+  if (!foot.includes('G2 62%')) fail(`battery missing from footer: "${foot}"`)
+  else console.log('  ok    battery shows in the footer')
+  checkSpec('run (battery 7%)', 'run', busyView(), 'stream', mapReady, 7)
+
+  const cd = countdownView()
+  const step = buildScreen('run', cd, 'stream', settings, mapReady).text.find(t => t.name === 'sg-step')?.content ?? ''
+  if (!/^[1-5] → /.test(step)) fail(`countdown not showing 3s from the end: "${step.split('\n')[0]}"`)
+  else console.log(`  ok    countdown reads "${step.split('\n')[0]}"`)
+  checkSpec('run (countdown)', 'run', cd, 'stream', mapReady)
+
+  judge('flash (step change)', flashScreen(['Rep 3/8', 'hold 6:20–6:40/mi', '5 / 17']))
+  judge('flash (plan complete)', flashScreen(['Plan complete']))
+  judge('flash (drift)', flashScreen(['Z2 · push', '31s out of zone']))
+  // Every built-in step label has to survive the flash at full width.
+  let longest = ''
+  for (const b of BUILT_INS) for (const s of b.build('mi').steps) if (s.label.length > longest.length) longest = s.label
+  judge(`flash (longest label: ${longest})`, flashScreen([longest, 'hold 6:20–6:40/mi', '12 / 12']))
+}
 
 console.log(failures === 0 ? '\nOK — every screen fits' : `\n${failures} failure(s)`)
 process.exit(failures === 0 ? 0 : 1)

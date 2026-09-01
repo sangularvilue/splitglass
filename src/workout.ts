@@ -22,8 +22,21 @@ export type WorkoutView = {
   /** Seconds since the last snapshot arrived — the HUD greys out when this grows. */
   staleSeconds: number
   zones: ZoneState | null
+  /**
+   * Current pace, smoothed. HealthKit's running speed is instantaneous and
+   * jitters ±20 s/mi stride to stride; this is a ~6 s exponential average of it,
+   * which is what a pace you can actually hold looks like.
+   */
+  paceSecPerKm: number | null
+  /** Pace over the current step so far — what you pace a rep against. */
+  stepPaceSecPerKm: number | null
   /** Average pace over the whole workout, seconds per kilometre. */
   avgPaceSecPerKm: number | null
+  /**
+   * Consecutive seconds spent outside the current step's target zone. Zero when
+   * the step has no zone target, or you are in it.
+   */
+  zoneDriftSeconds: number
   progress: StepProgress | null
   splits: Split[]
   /** True once every step of the plan is done. */
@@ -37,6 +50,9 @@ type StepCursor = {
   hrSum: number
   hrCount: number
 }
+
+/** Time constant for pace smoothing. Six seconds: a few strides, not a lap. */
+export const PACE_TAU_SECONDS = 6
 
 export type Engine = ReturnType<typeof createEngine>
 
@@ -57,12 +73,64 @@ export function createEngine(opts: {
   let fallbackDurations: number[] | null = null
   let lastZoneSampleAt: number | null = null
 
+  // Pace smoothing and zone drift, both keyed to the snapshot clock.
+  let emaPace: number | null = null
+  let emaAt: number | null = null
+  let driftSeconds = 0
+  let driftAt: number | null = null
+
   function reset(): void {
     cursor = null
     splits = []
     planComplete = false
     fallbackDurations = null
     lastZoneSampleAt = null
+    emaPace = null
+    emaAt = null
+    driftSeconds = 0
+    driftAt = null
+  }
+
+  /**
+   * Exponential moving average with a 6-second time constant, stepped by the
+   * real gap between readings so a dropped packet does not over-weight the next
+   * one. A reading older than 10 s with no speed at all lets the average lapse
+   * rather than freezing a stale number on the HUD.
+   */
+  function smoothPace(snap: Snapshot): void {
+    const raw = snap.paceSecPerKm
+    const now = snap.at
+    if (raw == null || !Number.isFinite(raw) || raw <= 0) {
+      if (emaAt != null && now - emaAt > 10_000) { emaPace = null; emaAt = null }
+      return
+    }
+    if (emaPace == null || emaAt == null) {
+      emaPace = raw
+    } else {
+      const dt = Math.max(0.05, Math.min(10, (now - emaAt) / 1000))
+      const alpha = 1 - Math.exp(-dt / PACE_TAU_SECONDS)
+      emaPace += alpha * (raw - emaPace)
+    }
+    emaAt = now
+  }
+
+  /** How long you have been out of the step's target zone, if it has one. */
+  function trackDrift(snap: Snapshot, zonesNow: ZoneState | null): void {
+    const target = cursor ? opts.getPlan().steps[cursor.index]?.holdZone : undefined
+    const now = snap.at
+    if (target == null || !zonesNow || zonesNow.currentIndex == null || snap.state !== 'running') {
+      driftSeconds = 0
+      driftAt = null
+      return
+    }
+    const capped = Math.min(target, zonesNow.count - 1)
+    if (zonesNow.currentIndex === capped) {
+      driftSeconds = 0
+      driftAt = now
+      return
+    }
+    if (driftAt != null) driftSeconds += Math.min(10, (now - driftAt) / 1000)
+    driftAt = now
   }
 
   /**
@@ -190,10 +258,13 @@ export function createEngine(opts: {
     if (snap.heartRate == null) return null
 
     // No zone payload — accumulate our own from the max-HR setting, and keep the
-    // `computed` label on it so the UI can say whose maths it is.
+    // `computed` label on it so the UI can say whose maths it is. Idempotent per
+    // snapshot: a second call for the same reading adds no time.
     const now = snap.at
-    const delta = lastZoneSampleAt != null ? Math.min(10, (now - lastZoneSampleAt) / 1000) : 0
-    lastZoneSampleAt = now
+    const delta = lastZoneSampleAt != null && now > lastZoneSampleAt
+      ? Math.min(10, (now - lastZoneSampleAt) / 1000)
+      : 0
+    lastZoneSampleAt = Math.max(lastZoneSampleAt ?? 0, now)
 
     const base = computedZones(opts.getMaxHeartRate(), snap.heartRate, fallbackDurations ?? undefined)
     const index = zoneForHeartRate(base, snap.heartRate)
@@ -220,6 +291,7 @@ export function createEngine(opts: {
 
       snapshot = snap
       receivedAt = Date.now()
+      smoothPace(snap)
 
       if (cursor && snap.heartRate != null) {
         cursor.hrSum += snap.heartRate
@@ -232,6 +304,9 @@ export function createEngine(opts: {
       while (cursor && snap.state === 'running' && stepDone(opts.getPlan().steps[cursor.index]!, snap) && guard++ < 64) {
         advance(snap)
       }
+
+      // Drift is measured against the step we are now in, after any advance.
+      trackDrift(snap, resolveZones(snap))
 
       return this.view()
     },
@@ -255,11 +330,16 @@ export function createEngine(opts: {
 
     view(): WorkoutView {
       const snap = snapshot
+      const used = snap && cursor ? consumed(snap) : null
       return {
         snapshot: snap,
         staleSeconds: receivedAt > 0 ? (Date.now() - receivedAt) / 1000 : Infinity,
         zones: snap ? resolveZones(snap) : null,
+        paceSecPerKm: emaPace,
+        // Needs a little of the step behind it before it means anything.
+        stepPaceSecPerKm: used && used.metres >= 30 && used.seconds >= 10 ? paceFrom(used.metres, used.seconds) : null,
         avgPaceSecPerKm: snap ? (paceFrom(snap.distance, snap.elapsed)) : null,
+        zoneDriftSeconds: driftSeconds,
         progress: progress(),
         splits,
         planComplete,

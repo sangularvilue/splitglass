@@ -78,6 +78,7 @@ export type ScreenSpec = {
 }
 
 const SCREEN_W = 576
+const SCREEN_H = 288
 const LINE = 27
 
 // Brightness roles. Kept here rather than sprinkled through the builders so the
@@ -145,13 +146,16 @@ function stateWord(snap: Snapshot | null): string {
  * on a HUD is worse than an obviously absent one, so once readings stop arriving
  * the line says how long ago the last one was.
  */
-function statusLine(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings): string {
+function statusLine(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings, battery?: number | null): string {
   const stale = view.staleSeconds
   const staleNote = !Number.isFinite(stale) ? 'no data'
     : stale > 5 ? `${Math.round(stale)}s ago`
       : ''
   const parts = [transportGlyph(kind), stateWord(view.snapshot), settings.planName]
   if (staleNote) parts.push(staleNote)
+  // The glasses' own battery. You do not want the HUD dying at mile five, and
+  // the phone is in a pocket.
+  if (battery != null) parts.push(`G2 ${Math.round(battery)}%`)
   return parts.join(' · ')
 }
 
@@ -169,7 +173,7 @@ function zoneNow(view: WorkoutView): string {
  * brightness; pace, average and energy beneath at one step down; the current
  * step of the plan across the middle; zones and status at the foot.
  */
-export function runScreen(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings): ScreenSpec {
+export function runScreen(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings, battery?: number | null): ScreenSpec {
   const snap = view.snapshot
   const u = settings.units
   const paceUnit = paceUnitLabel(u)
@@ -183,7 +187,7 @@ export function runScreen(view: WorkoutView, kind: TransportKind, settings: Spli
       zoneNow(view), L.primary),
 
     tile(4, 'sg-pace', 0, 1, `PACE ${paceUnit}`,
-      fmtPace(snap?.paceSecPerKm ?? null, u), L.primary),
+      fmtPace(view.paceSecPerKm, u), L.primary),
     tile(5, 'sg-avg', 1, 1, `AVG ${paceUnit}`,
       fmtPace(view.avgPaceSecPerKm, u), L.secondary),
     tile(6, 'sg-cal', 2, 1, 'CAL',
@@ -193,7 +197,7 @@ export function runScreen(view: WorkoutView, kind: TransportKind, settings: Spli
     wide(8, 'sg-foot', FOOT_Y, TILE_H,
       fitLines([
         view.zones ? zoneSparkline(view.zones) : 'No HR',
-        statusLine(view, kind, settings),
+        statusLine(view, kind, settings, battery),
       ], SCREEN_W - 12),
       L.chrome, true),
   ]
@@ -216,7 +220,13 @@ function stepBlock(view: WorkoutView, settings: SplitglassSettings): string {
     ? `${fmtCountdown(p.secondsLeft)} left`
     : `${fmtShortDistance(p.metresLeft)} left${p.secondsLeft != null ? ` · ${fmtCountdown(p.secondsLeft)}` : ''}`
 
-  const head = `${p.step.label}  (${p.index + 1}/${p.total})  ${left}`
+  // The last five seconds of a step count down in front of everything else, and
+  // name what comes next — that is the moment you need to know.
+  const countdown = p.secondsLeft != null && p.secondsLeft > 0 && p.secondsLeft <= 5
+    ? `${Math.ceil(p.secondsLeft)} → ${p.next ? p.next.label : 'done'}`
+    : null
+
+  const head = countdown ?? `${p.step.label}  (${p.index + 1}/${p.total})  ${left}`
 
   // Zone before easy: a zone workout marks its Z1 blocks easy, and the zone is
   // the more useful of the two things to say.
@@ -227,12 +237,28 @@ function stepBlock(view: WorkoutView, settings: SplitglassSettings): string {
       : p.step.easy ? 'easy' : ''
 
   const next = p.next ? `next: ${p.next.label}` : 'last step'
+  const stepPace = paceHold(view, p.step.holdPaceSecPerKm, u)
 
   return fitLines([
     head,
-    [hold, next].filter(Boolean).join('  ·  '),
+    [stepPace, hold, next].filter(Boolean).join('  ·  '),
     progressGlyphs(p.fraction, 20),
   ], SCREEN_W - 12)
+}
+
+/**
+ * Pace over this step so far, with a verdict against the band if there is one.
+ * `from` is the fast end of the band and `to` the slow end (both seconds per
+ * kilometre), so slower than `to` means push and faster than `from` means ease.
+ */
+function paceHold(view: WorkoutView, band: { from: number; to: number } | undefined, u: SplitglassSettings['units']): string {
+  const pace = view.stepPaceSecPerKm
+  if (pace == null) return ''
+  const label = `step ${fmtPace(pace, u)}`
+  if (!band) return label
+  if (pace > band.to) return `${label} · push`
+  if (pace < band.from) return `${label} · ease`
+  return `${label} ✓`
 }
 
 /**
@@ -264,7 +290,7 @@ function progressGlyphs(fraction: number, width: number): string {
  * the scrolling. A list also sidesteps the container budget: three containers
  * whatever the split count.
  */
-export function splitsScreen(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings): ScreenSpec {
+export function splitsScreen(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings, battery?: number | null): ScreenSpec {
   const u = settings.units
   const items = view.splits.length === 0
     ? ['No splits']
@@ -278,7 +304,7 @@ export function splitsScreen(view: WorkoutView, kind: TransportKind, settings: S
     screen: 'splits',
     text: [
       wide(1, 'sg-splits-h', 2, LINE, fit(`Splits ${view.splits.length} · ${settings.planName}`, SCREEN_W - 12), L.secondary),
-      wide(8, 'sg-splits-f', 252, LINE, fit(statusLine(view, kind, settings), SCREEN_W - 12), L.chrome),
+      wide(8, 'sg-splits-f', 252, LINE, fit(statusLine(view, kind, settings, battery), SCREEN_W - 12), L.chrome),
     ],
     lists: [{
       id: 2,
@@ -305,7 +331,7 @@ export function splitsScreen(view: WorkoutView, kind: TransportKind, settings: S
  * A list again, because HealthKit permits anywhere from three to nine zones and
  * nine rows would not fit the container budget.
  */
-export function zonesScreen(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings): ScreenSpec {
+export function zonesScreen(view: WorkoutView, kind: TransportKind, settings: SplitglassSettings, battery?: number | null): ScreenSpec {
   const z = view.zones
   const header = z
     ? `Zones · ${z.source === 'apple' ? 'Health' : 'est. max ' + settings.maxHeartRate}`
@@ -327,7 +353,7 @@ export function zonesScreen(view: WorkoutView, kind: TransportKind, settings: Sp
     screen: 'zones',
     text: [
       wide(1, 'sg-zones-h', 2, LINE, fit(header, SCREEN_W - 12), L.secondary),
-      wide(8, 'sg-zones-f', 252, LINE, fit(statusLine(view, kind, settings), SCREEN_W - 12), L.chrome),
+      wide(8, 'sg-zones-f', 252, LINE, fit(statusLine(view, kind, settings, battery), SCREEN_W - 12), L.chrome),
     ],
     lists: [{ id: 2, name: 'sg-zones-l', x: 6, y: 34, w: SCREEN_W - 12, h: 212, items, capture: true }],
     images: [],
@@ -345,6 +371,7 @@ export function mapScreen(
   kind: TransportKind,
   settings: SplitglassSettings,
   map: { available: boolean; scaleMetres: number | null; offRouteMetres: number | null; gpsMetres: number | null },
+  battery?: number | null,
 ): ScreenSpec {
   const u = settings.units
   const snap = view.snapshot
@@ -357,9 +384,9 @@ export function mapScreen(
         : snap?.indoor ? 'Indoor' : 'No GPS', SCREEN_W - 12),
       L.chrome),
     wide(7, 'sg-map-a', 140, LINE,
-      fit(`${fmtDistance(snap?.distance ?? null, u)} ${u}  ·  ${fmtDuration(snap?.elapsed ?? null)}  ·  ${fmtPace(snap?.paceSecPerKm ?? null, u)}${paceUnitLabel(u)}`, SCREEN_W - 12),
+      fit(`${fmtDistance(snap?.distance ?? null, u)} ${u}  ·  ${fmtDuration(snap?.elapsed ?? null)}  ·  ${fmtPace(view.paceSecPerKm, u)}${paceUnitLabel(u)}`, SCREEN_W - 12),
       L.primary),
-    wide(8, 'sg-map-f', 200, 2 * LINE, mapFootLines(view, kind, settings, map), L.chrome, true),
+    wide(8, 'sg-map-f', 200, 2 * LINE, mapFootLines(view, kind, settings, map, battery), L.chrome, true),
   ]
 
   const images: ImageBox[] = hasMap
@@ -379,6 +406,7 @@ function mapFootLines(
   kind: TransportKind,
   settings: SplitglassSettings,
   map: { offRouteMetres: number | null; gpsMetres: number | null },
+  battery?: number | null,
 ): string {
   const bits: string[] = []
   if (map.offRouteMetres != null) {
@@ -392,8 +420,33 @@ function mapFootLines(
   }
   return fitLines([
     bits.length ? bits.join(' · ') : '',
-    statusLine(view, kind, settings),
+    statusLine(view, kind, settings, battery),
   ], SCREEN_W - 12)
+}
+
+// ── Flash ──
+
+/**
+ * A moment, not a screen. The G2 has no haptics and no audio, so a step change
+ * has to be *seen*: three centred lines at full brightness for a few seconds,
+ * then back to whatever was showing. One container per line so each can be cut
+ * to width independently.
+ */
+export function flashScreen(lines: string[]): ScreenSpec {
+  const shown = lines.slice(0, 3)
+  const top = Math.round((SCREEN_H - shown.length * (LINE + 8)) / 2)
+  const text: TextBox[] = shown.map((line, i) => ({
+    id: 20 + i,
+    name: `sg-flash-${i}`,
+    x: 6,
+    y: top + i * (LINE + 8),
+    w: SCREEN_W - 12,
+    h: LINE,
+    content: fit(line, SCREEN_W - 12),
+    level: i === 0 ? L.primary : L.secondary,
+    capture: i === 0,
+  }))
+  return { screen: 'run', text, lists: [], images: [] }
 }
 
 // ── Dispatch ──
@@ -404,12 +457,13 @@ export function buildScreen(
   kind: TransportKind,
   settings: SplitglassSettings,
   map: { available: boolean; scaleMetres: number | null; offRouteMetres: number | null; gpsMetres: number | null },
+  battery?: number | null,
 ): ScreenSpec {
   switch (screen) {
-    case 'splits': return splitsScreen(view, kind, settings)
-    case 'zones': return zonesScreen(view, kind, settings)
-    case 'map': return mapScreen(view, kind, settings, map)
-    default: return runScreen(view, kind, settings)
+    case 'splits': return splitsScreen(view, kind, settings, battery)
+    case 'zones': return zonesScreen(view, kind, settings, battery)
+    case 'map': return mapScreen(view, kind, settings, map, battery)
+    default: return runScreen(view, kind, settings, battery)
   }
 }
 

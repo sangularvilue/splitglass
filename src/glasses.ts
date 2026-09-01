@@ -27,7 +27,7 @@ import {
 
 import type { GlassesScreen, SplitglassSettings, TransportKind } from './types'
 import type { WorkoutView } from './workout'
-import { buildScreen, nextScreen, type ScreenSpec, type TextBox } from './screens'
+import { buildScreen, flashScreen, nextScreen, type ScreenSpec, type TextBox } from './screens'
 import { renderMap, type MapRender, type Track } from './map'
 
 export const MenuAction = {
@@ -85,6 +85,13 @@ export function createGlasses(deps: GlassesDeps) {
   let rendered: ScreenSpec | null = null
   let lastGesture = 0
 
+  // The glasses' own battery, from getDeviceInfo and then pushed updates.
+  let battery: number | null = null
+
+  // A flash owns the display until this time; refresh() stays out of its way.
+  let flashUntil = 0
+  let flashTimer: number | null = null
+
   // Map state, kept out of the render path so a slow image never delays a number.
   let lastMap: MapRender | null = null
   let lastMapSignature = ''
@@ -115,7 +122,20 @@ export function createGlasses(deps: GlassesDeps) {
   }
 
   function spec(): ScreenSpec {
-    return buildScreen(screen, deps.getView(), deps.getTransport(), deps.getSettings(), mapInfo())
+    return buildScreen(screen, deps.getView(), deps.getTransport(), deps.getSettings(), mapInfo(), battery)
+  }
+
+  async function readBattery(b: EvenAppBridge): Promise<void> {
+    try {
+      const info = await b.getDeviceInfo()
+      const level = info?.status?.batteryLevel
+      if (typeof level === 'number') battery = level
+    } catch { /* not every host reports it */ }
+    try {
+      b.onDeviceStatusChanged((status) => {
+        if (typeof status?.batteryLevel === 'number') battery = status.batteryLevel
+      })
+    } catch { /* older SDK */ }
   }
 
   function toContainers(s: ScreenSpec) {
@@ -164,6 +184,7 @@ export function createGlasses(deps: GlassesDeps) {
   /** Full page build — needed whenever the container set changes. */
   async function renderScreen(): Promise<void> {
     if (!bridge) return
+    if (Date.now() < flashUntil) return
     const s = spec()
     const { textObject, listObject, imageObject } = toContainers(s)
 
@@ -195,9 +216,41 @@ export function createGlasses(deps: GlassesDeps) {
     }
   }
 
+  /**
+   * Show a few lines at full brightness for `ms`, then put the screen back. A
+   * second flash while one is up replaces it. Used for step changes, the end of
+   * the plan, and zone drift — the events a HUD with no haptics has to make
+   * visible.
+   */
+  async function flash(lines: string[], ms = 3000): Promise<void> {
+    if (!bridge || !startupDone) return
+    if (flashTimer !== null) window.clearTimeout(flashTimer)
+    flashUntil = Date.now() + ms
+    const s = flashScreen(lines)
+    const { textObject } = toContainers(s)
+    try {
+      await bridge.rebuildPageContainer(new RebuildPageContainer({
+        containerTotalNum: textObject.length,
+        textObject,
+        menuObject: menuObject(),
+      }))
+      rendered = null // force a full rebuild when the flash ends
+      log(`flash: ${lines.join(' / ')}`)
+    } catch (err) {
+      log(`flash failed: ${err}`)
+      flashUntil = 0
+    }
+    flashTimer = window.setTimeout(() => {
+      flashTimer = null
+      flashUntil = 0
+      void renderScreen()
+    }, ms)
+  }
+
   /** Cheap path: same screen, so only the text that moved goes out. */
   async function refresh(): Promise<void> {
     if (!bridge) return
+    if (Date.now() < flashUntil) return
     if (!rendered || rendered.screen !== screen) { await renderScreen(); return }
 
     const s = spec()
@@ -377,6 +430,7 @@ export function createGlasses(deps: GlassesDeps) {
         ]) as EvenAppBridge
         register(bridge)
         screen = deps.getSettings().homeScreen
+        await readBattery(bridge)
         await renderScreen()
         log('Connected to glasses')
         return true
@@ -389,9 +443,11 @@ export function createGlasses(deps: GlassesDeps) {
 
     bridge: () => bridge,
     screen: () => screen,
+    battery: () => battery,
     goToScreen,
     refresh,
     renderScreen,
+    flash,
     /** Force the next map redraw regardless of the interval — after a route load. */
     invalidateMap() { lastMapSignature = ''; lastMapSentAt = 0 },
     lastMap: () => lastMap,
