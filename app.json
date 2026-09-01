@@ -20,9 +20,10 @@
     },
     {
       "name": "location",
-      "desc": "Draws the breadcrumb map for outdoor workouts and reports how far you are from a loaded route. Never used for indoor workouts, and never sent anywhere.",
-      "optional": true
+      "desc": "Draws the breadcrumb map for outdoor workouts and reports how far you are from a loaded route. Never used for indoor workouts, and never sent anywhere."
     }
   ],
-  "supported_languages": ["en"]
+  "supported_languages": [
+    "en"
+  ]
 }
