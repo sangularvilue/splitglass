@@ -1,0 +1,28 @@
+{
+  "name": "pace-rail",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5181",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "check:screens": "esbuild checks/screens.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/pr-screens.mjs --log-level=error && node node_modules/.cache/pr-screens.mjs",
+    "check:workout": "esbuild checks/workout.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/pr-workout.mjs --log-level=error && node node_modules/.cache/pr-workout.mjs",
+    "check": "npm run typecheck && npm run check:workout && npm run check:screens",
+    "pack": "npm run build && npx @evenrealities/evenhub-cli pack app.json dist"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "0.0.14",
+    "@evenrealities/pretext": "^0.1.4",
+    "@upstash/redis": "^1.38.0"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "^0.1.14",
+    "@types/node": "^26.4.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  }
+}

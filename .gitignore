@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out.ehpk
+.vercel/
+.DS_Store
+
+# Xcode — the project file is generated from ios/project.yml, never committed
+ios/PaceRail.xcodeproj/
+ios/*.xcworkspace/
+ios/build/
+ios/DerivedData/
+xcuserdata/
