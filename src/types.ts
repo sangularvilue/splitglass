@@ -124,7 +124,7 @@ export type Units = 'mi' | 'km'
 
 export type GlassesScreen = 'run' | 'splits' | 'zones' | 'map'
 
-export type PaceRailSettings = {
+export type SplitglassSettings = {
   /** Six-character code shared with the phone app, so a relay only feeds you. */
   pairCode: string
   units: Units

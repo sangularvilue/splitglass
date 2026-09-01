@@ -8,7 +8,7 @@
  */
 
 import './styles.css'
-import type { GlassesScreen, PaceRailSettings, Plan, Snapshot, TransportKind, Units } from './types'
+import type { GlassesScreen, SplitglassSettings, Plan, Snapshot, TransportKind, Units } from './types'
 import { loadPlan, loadSettings, savePlan, updateSetting, exportState, importState, HOST_KEYS } from './settings'
 import { createEngine, intervalPlan, openPlan, steadyPlan, type WorkoutView } from './workout'
 import { createTransport, serverOrigin } from './transport'
@@ -24,7 +24,7 @@ const $ = (id: string) => document.getElementById(id)
 const esc = (s: unknown) => String(s).replace(/[&<>"']/g, c => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 
-let settings: PaceRailSettings = loadSettings()
+let settings: SplitglassSettings = loadSettings()
 let plan: Plan = loadPlan()
 let view: WorkoutView = { snapshot: null, staleSeconds: Infinity, zones: null, avgPaceSecPerKm: null, progress: null, splits: [], planComplete: false }
 let transportKind: TransportKind = 'none'
@@ -86,7 +86,7 @@ function shell(): string {
   <header class="hd">
     <div class="hd-mark">▚▚</div>
     <div>
-      <h1>Pace Rail</h1>
+      <h1>Splitglass</h1>
       <p class="hd-sub">HealthKit on your wrist, on the glass in front of you</p>
     </div>
     <div class="hd-live" id="hd-live">—</div>
@@ -97,7 +97,7 @@ function shell(): string {
     <div class="pair">
       <div class="pair-code" id="pair-code">------</div>
       <div class="pair-note">
-        Enter this in <b>Pace Rail</b> on the iPhone. It scopes the relay, so only
+        Enter this in <b>Splitglass</b> on the iPhone. It scopes the relay, so only
         your own workout reaches these glasses.
         <div class="pair-actions">
           <button class="btn" id="pair-copy">Copy</button>
@@ -432,7 +432,7 @@ function wire(): void {
   })
 
   $('pair-new')?.addEventListener('click', () => {
-    localStorage.removeItem('pacerail.settings.v1')
+    localStorage.removeItem('splitglass.settings.v1')
     settings = loadSettings()
     syncSettingsControls()
     log(`New pair code: ${settings.pairCode} — enter it on the phone`)
@@ -489,7 +489,7 @@ function wire(): void {
     paintMapPreview()
   })
 
-  const bind = <K extends keyof PaceRailSettings>(id: string, key: K, read: (el: HTMLInputElement & HTMLSelectElement) => PaceRailSettings[K], after?: () => void) => {
+  const bind = <K extends keyof SplitglassSettings>(id: string, key: K, read: (el: HTMLInputElement & HTMLSelectElement) => SplitglassSettings[K], after?: () => void) => {
     $(id)?.addEventListener('change', (e) => {
       settings = updateSetting(key, read(e.target as HTMLInputElement & HTMLSelectElement))
       log(`${String(key)}: ${String(settings[key])}`)
@@ -520,7 +520,7 @@ async function boot(): Promise<void> {
   paint()
   paintMapPreview()
 
-  log(`Pace Rail — pair code ${settings.pairCode}`)
+  log(`Splitglass — pair code ${settings.pairCode}`)
 
   const connected = await glasses.connect()
   if (connected) {

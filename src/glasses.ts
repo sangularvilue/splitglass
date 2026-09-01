@@ -25,7 +25,7 @@ import {
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk'
 
-import type { GlassesScreen, PaceRailSettings, TransportKind } from './types'
+import type { GlassesScreen, SplitglassSettings, TransportKind } from './types'
 import type { WorkoutView } from './workout'
 import { buildScreen, nextScreen, type ScreenSpec, type TextBox } from './screens'
 import { renderMap, type MapRender, type Track } from './map'
@@ -53,11 +53,11 @@ const MENU_LABELS: Record<MenuActionId, string> = {
  * "to gray4" conversion step, so the host is happy to do the packing. Packed
  * Gray4 halves the bytes on the wire, which on a 10–30 KB/s link is the
  * difference between a 0.6s and a 1.2s map redraw; set
- * `globalThis.__PR = { mapFormat: 'gray4' }` to try it on real hardware.
+ * `globalThis.__SG = { mapFormat: 'gray4' }` to try it on real hardware.
  */
 type MapFormat = 'gray8' | 'gray4'
 function mapFormat(): MapFormat {
-  const o = (globalThis as any).__PR
+  const o = (globalThis as any).__SG
   return o?.mapFormat === 'gray4' ? 'gray4' : 'gray8'
 }
 
@@ -67,7 +67,7 @@ const GESTURE_DEBOUNCE_MS = 250
 
 export type GlassesDeps = {
   log: (msg: string) => void
-  getSettings: () => PaceRailSettings
+  getSettings: () => SplitglassSettings
   getView: () => WorkoutView
   getTransport: () => TransportKind
   getTrack: () => Track

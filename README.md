@@ -1,4 +1,4 @@
-# Pace Rail
+# Splitglass
 
 A live heads-up display for an Apple Watch workout on Even Realities G2 glasses.
 
@@ -75,7 +75,7 @@ The plugin and the relay are one Vercel project.
 
 ```bash
 npm run build
-npx vercel --prod --yes          # → pace.grannis.xyz
+npx vercel --prod --yes          # → splitglass.grannis.xyz
 ```
 
 Set these on the Vercel project first, or the relay returns 502:
@@ -92,7 +92,7 @@ npm run pack                     # → out.ehpk, upload at hub.evenrealities.com
 ```
 
 A packaged `.ehpk` has no backend of its own, so `serverOrigin()` switches to the
-absolute `https://pace.grannis.xyz` when the page is not being served from
+absolute `https://splitglass.grannis.xyz` when the page is not being served from
 grannis.xyz. Requires Even App 2.2.9+ and SDK 0.0.14 (long-press menus,
 `textColor`, `EventSourceType`, phone location).
 

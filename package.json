@@ -1,5 +1,5 @@
 {
-  "name": "pace-rail",
+  "name": "splitglass",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check:screens": "esbuild checks/screens.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/pr-screens.mjs --log-level=error && node node_modules/.cache/pr-screens.mjs",
-    "check:workout": "esbuild checks/workout.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/pr-workout.mjs --log-level=error && node node_modules/.cache/pr-workout.mjs",
+    "check:screens": "esbuild checks/screens.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sg-screens.mjs --log-level=error && node node_modules/.cache/sg-screens.mjs",
+    "check:workout": "esbuild checks/workout.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/sg-workout.mjs --log-level=error && node node_modules/.cache/sg-workout.mjs",
     "check": "npm run typecheck && npm run check:workout && npm run check:screens",
     "pack": "npm run build && npx @evenrealities/evenhub-cli pack app.json dist"
   },

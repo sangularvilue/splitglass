@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PaceRailWatchApp: App {
+struct SplitglassWatchApp: App {
     @StateObject private var workout = WorkoutManager()
 
     var body: some Scene {
@@ -33,7 +33,7 @@ struct WatchRootView: View {
     private var startView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Pace Rail")
+                Text("Splitglass")
                     .font(.headline)
 
                 if case .failed(let message) = workout.phase {

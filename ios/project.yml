@@ -1,17 +1,17 @@
-# XcodeGen spec — `xcodegen generate` in this directory produces PaceRail.xcodeproj.
+# XcodeGen spec — `xcodegen generate` in this directory produces Splitglass.xcodeproj.
 #
 # The project file is generated rather than committed on purpose: a .pbxproj is
 # not reviewable, and this file is. Two targets:
 #
-#   PaceRail       iOS app — receives the mirrored workout, serves it on
+#   Splitglass       iOS app — receives the mirrored workout, serves it on
 #                  loopback for the glasses, posts it to the relay.
-#   PaceRailWatch  watchOS app — owns the HKWorkoutSession and builds every
+#   SplitglassWatch  watchOS app — owns the HKWorkoutSession and builds every
 #                  snapshot. This is where all the numbers come from.
 #
 # Set DEVELOPMENT_TEAM below (or export it before generating) and everything else
 # signs automatically.
 
-name: PaceRail
+name: Splitglass
 
 options:
   bundleIdPrefix: xyz.grannis
@@ -34,29 +34,29 @@ settings:
 
 targets:
 
-  PaceRail:
+  Splitglass:
     type: application
     platform: iOS
     sources:
       - path: Phone
       - path: Shared
     dependencies:
-      - target: PaceRailWatch
+      - target: SplitglassWatch
         embed: true
         copy:
           destination: wrapper
           subpath: Watch
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: xyz.grannis.pacerail
-        PRODUCT_NAME: Pace Rail
+        PRODUCT_BUNDLE_IDENTIFIER: xyz.grannis.splitglass
+        PRODUCT_NAME: Splitglass
         INFOPLIST_FILE: Phone/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Phone/PaceRail.entitlements
+        CODE_SIGN_ENTITLEMENTS: Phone/Splitglass.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MAC_CATALYST: NO
         GENERATE_INFOPLIST_FILE: NO
 
-  PaceRailWatch:
+  SplitglassWatch:
     type: application
     platform: watchOS
     sources:
@@ -64,9 +64,9 @@ targets:
       - path: Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: xyz.grannis.pacerail.watchkitapp
-        PRODUCT_NAME: Pace Rail
+        PRODUCT_BUNDLE_IDENTIFIER: xyz.grannis.splitglass.watchkitapp
+        PRODUCT_NAME: Splitglass
         INFOPLIST_FILE: Watch/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Watch/PaceRailWatch.entitlements
+        CODE_SIGN_ENTITLEMENTS: Watch/SplitglassWatch.entitlements
         GENERATE_INFOPLIST_FILE: NO
         WATCHOS_DEPLOYMENT_TARGET: "10.0"

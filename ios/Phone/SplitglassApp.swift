@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PaceRailApp: App {
+struct SplitglassApp: App {
     @StateObject private var receiver = MirrorReceiver()
 
     var body: some Scene {
@@ -39,7 +39,7 @@ struct PhoneRootView: View {
                         LabeledContent("Paired as", value: receiver.settings.pairCode)
                     }
 
-                    Text("The code is on the Pace Rail plugin's own screen, under \u{201C}Pair the phone\u{201D}.")
+                    Text("The code is on the Splitglass plugin's own screen, under \u{201C}Pair the phone\u{201D}.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -111,7 +111,7 @@ struct PhoneRootView: View {
                     LabeledContent("Resting", value: "\(Int(receiver.settings.restingHeartRate)) bpm")
                 }
             }
-            .navigationTitle("Pace Rail")
+            .navigationTitle("Splitglass")
             .onAppear { codeField = receiver.settings.pairCode }
         }
     }

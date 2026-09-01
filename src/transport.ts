@@ -33,7 +33,7 @@ const STREAM_STALL_MS = 12_000
  */
 export function serverOrigin(): string {
   const packaged = window.location.protocol === 'file:' || !window.location.host.includes('grannis')
-  return packaged ? 'https://pace.grannis.xyz' : ''
+  return packaged ? 'https://splitglass.grannis.xyz' : ''
 }
 
 export type Transport = ReturnType<typeof createTransport>

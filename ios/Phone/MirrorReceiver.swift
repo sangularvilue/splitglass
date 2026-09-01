@@ -21,12 +21,12 @@ final class MirrorReceiver: NSObject, ObservableObject {
     @Published private(set) var receivedCount = 0
     @Published private(set) var lastRelayError: String?
     @Published private(set) var localServerRunning = false
-    @Published var settings = PaceRailSettings.load()
+    @Published var settings = SplitglassSettings.load()
 
     let store = SnapshotStore()
 
     private let healthStore = HKHealthStore()
-    private let log = Logger(subsystem: "xyz.grannis.pacerail", category: "mirror")
+    private let log = Logger(subsystem: "xyz.grannis.splitglass", category: "mirror")
     private let cloud = CloudRelay()
     private var localServer: LocalServer?
 
@@ -82,7 +82,7 @@ final class MirrorReceiver: NSObject, ObservableObject {
         }
     }
 
-    func updateSettings(_ update: (inout PaceRailSettings) -> Void) {
+    func updateSettings(_ update: (inout SplitglassSettings) -> Void) {
         var next = settings
         update(&next)
         settings = next

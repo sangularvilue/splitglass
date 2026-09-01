@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Pace Rail</string>
+  <string>Splitglass</string>
   <key>CFBundleExecutable</key>
   <string>$(EXECUTABLE_NAME)</string>
   <key>CFBundleIdentifier</key>
@@ -20,15 +20,15 @@
   <key>WKApplication</key>
   <true/>
   <key>WKCompanionAppBundleIdentifier</key>
-  <string>xyz.grannis.pacerail</string>
+  <string>xyz.grannis.splitglass</string>
   <!-- Keeps the app alive for the whole workout, which is the entire point. -->
   <key>WKBackgroundModes</key>
   <array>
     <string>workout-processing</string>
   </array>
   <key>NSHealthShareUsageDescription</key>
-  <string>Pace Rail records your run with HealthKit and reads heart rate, heart-rate zone, distance and energy from it, so the same numbers Health keeps can be shown on your Even G2 glasses.</string>
+  <string>Splitglass records your run with HealthKit and reads heart rate, heart-rate zone, distance and energy from it, so the same numbers Health keeps can be shown on your Even G2 glasses.</string>
   <key>NSHealthUpdateUsageDescription</key>
-  <string>Pace Rail saves your workout to Health when you finish, exactly as the built-in Workout app does.</string>
+  <string>Splitglass saves your workout to Health when you finish, exactly as the built-in Workout app does.</string>
 </dict>
 </plist>

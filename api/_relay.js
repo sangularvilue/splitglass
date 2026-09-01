@@ -10,7 +10,7 @@ export const redis = new Redis({
 export const SNAPSHOT_TTL = 60 * 60 * 6
 
 export function snapshotKey(code) {
-  return `pacerail:snap:${code}`
+  return `splitglass:snap:${code}`
 }
 
 /**

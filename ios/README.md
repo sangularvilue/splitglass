@@ -1,4 +1,4 @@
-# Pace Rail — watch and phone
+# Splitglass — watch and phone
 
 The watch owns the workout; the phone is a bridge. Nothing here computes a
 metric: every number is HealthKit's, which is why the glasses agree with the
@@ -11,7 +11,7 @@ HKWorkoutSession                     mirrored HKWorkoutSession
 HKLiveWorkoutBuilder  ──mirroring──▶ MirrorReceiver ──▶ LocalServer ──▶ plugin
   heart rate                           (background       127.0.0.1:8734    (loopback)
   distance, energy                      runtime for
-  HKLiveWorkoutZoneUpdate               the workout)  ──▶ CloudRelay ──▶ pace.grannis.xyz
+  HKLiveWorkoutZoneUpdate               the workout)  ──▶ CloudRelay ──▶ splitglass.grannis.xyz
   → Snapshot (JSON)                                       POST /api/push        │
                                                                                 ▼
                                                                         plugin polls or
@@ -29,11 +29,11 @@ brew install xcodegen
 cd ios
 export DEVELOPMENT_TEAM=XXXXXXXXXX     # your ten-character team id
 xcodegen generate
-open PaceRail.xcodeproj
+open Splitglass.xcodeproj
 ```
 
 The `.pbxproj` is generated rather than committed: `project.yml` is reviewable
-and a project file is not. Two targets, `PaceRail` (iOS 17+) and `PaceRailWatch`
+and a project file is not. Two targets, `Splitglass` (iOS 17+) and `SplitglassWatch`
 (watchOS 10+), the watch app embedded in the phone app.
 
 Then in Xcode: select the watch scheme, pick your watch, run. HealthKit
@@ -44,7 +44,7 @@ mid-training-block.
 
 ## Set-up, once
 
-1. Open the **Pace Rail** plugin on the glasses (or its companion page on the
+1. Open the **Splitglass** plugin on the glasses (or its companion page on the
    phone) and read the six-character code off the **Pair the phone** card.
 2. Type it into the iPhone app and press Save.
 3. Start a run on the watch. The phone should show *Watch mirroring: receiving*

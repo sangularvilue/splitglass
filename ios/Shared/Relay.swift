@@ -11,14 +11,14 @@ import os
 /// a plain-http connection.
 enum RelayConfig {
     static let localPort: UInt16 = 8734
-    static let defaultBaseURL = URL(string: "https://pace.grannis.xyz")!
+    static let defaultBaseURL = URL(string: "https://splitglass.grannis.xyz")!
     /// Readings older than this are not worth posting; the run is over.
     static let staleAfter: TimeInterval = 30
 }
 
 /// User-facing settings, shared between the phone and (via WatchConnectivity)
 /// the watch.
-struct PaceRailSettings: Codable, Equatable {
+struct SplitglassSettings: Codable, Equatable {
     /// Six characters from the plugin's Pair card.
     var pairCode: String = ""
     /// Post to the cloud relay as well as serving locally.
@@ -28,12 +28,12 @@ struct PaceRailSettings: Codable, Equatable {
     var maxHeartRate: Double = 185
     var restingHeartRate: Double = 55
 
-    static let storageKey = "pacerail.settings"
+    static let storageKey = "splitglass.settings"
 
-    static func load(from defaults: UserDefaults = .standard) -> PaceRailSettings {
+    static func load(from defaults: UserDefaults = .standard) -> SplitglassSettings {
         guard let data = defaults.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode(PaceRailSettings.self, from: data)
-        else { return PaceRailSettings() }
+              let decoded = try? JSONDecoder().decode(SplitglassSettings.self, from: data)
+        else { return SplitglassSettings() }
         return decoded
     }
 
@@ -51,7 +51,7 @@ struct PaceRailSettings: Codable, Equatable {
 /// network, and a dropped reading is replaced by the next one a second later.
 /// One request at a time, so a slow link cannot build a backlog.
 actor CloudRelay {
-    private let log = Logger(subsystem: "xyz.grannis.pacerail", category: "relay")
+    private let log = Logger(subsystem: "xyz.grannis.splitglass", category: "relay")
     private var inFlight = false
     private(set) var lastError: String?
     private(set) var lastPostedSeq: Int = -1
@@ -65,7 +65,7 @@ actor CloudRelay {
         return URLSession(configuration: config)
     }()
 
-    func post(_ snapshot: Snapshot, settings: PaceRailSettings) async {
+    func post(_ snapshot: Snapshot, settings: SplitglassSettings) async {
         guard settings.useCloudRelay, settings.isPaired else { return }
         guard !inFlight else { return }
 

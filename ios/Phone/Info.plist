@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Pace Rail</string>
+  <string>Splitglass</string>
   <key>CFBundleExecutable</key>
   <string>$(EXECUTABLE_NAME)</string>
   <key>CFBundleIdentifier</key>
@@ -25,9 +25,9 @@
     <string>UIInterfaceOrientationPortrait</string>
   </array>
   <key>NSHealthShareUsageDescription</key>
-  <string>Pace Rail reads your live workout from Apple Watch — heart rate, heart-rate zone, distance, energy and elapsed time — so it can show them on your Even G2 glasses while you run.</string>
+  <string>Splitglass reads your live workout from Apple Watch — heart rate, heart-rate zone, distance, energy and elapsed time — so it can show them on your Even G2 glasses while you run.</string>
   <key>NSHealthUpdateUsageDescription</key>
-  <string>Pace Rail does not write anything to Health. The workout itself is saved by the watch.</string>
+  <string>Splitglass does not write anything to Health. The workout itself is saved by the watch.</string>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
 </dict>

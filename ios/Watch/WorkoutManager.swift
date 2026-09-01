@@ -28,10 +28,10 @@ final class WorkoutManager: NSObject, ObservableObject {
     @Published private(set) var snapshot: Snapshot = .idle()
     @Published private(set) var mirroring = false
     @Published private(set) var zoneSource: Snapshot.Zones.Source?
-    @Published var settings = PaceRailSettings.load()
+    @Published var settings = SplitglassSettings.load()
 
     private let healthStore = HKHealthStore()
-    private let log = Logger(subsystem: "xyz.grannis.pacerail", category: "workout")
+    private let log = Logger(subsystem: "xyz.grannis.splitglass", category: "workout")
     private let cloud = CloudRelay()
 
     private var session: HKWorkoutSession?

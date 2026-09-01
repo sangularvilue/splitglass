@@ -1,7 +1,7 @@
 {
-  "package_id": "com.bnm.evendev.pacerail",
+  "package_id": "com.bnm.evendev.splitglass",
   "edition": "202601",
-  "name": "Pace Rail",
+  "name": "Splitglass",
   "version": "1.0.0",
   "min_app_version": "2.2.9",
   "min_sdk_version": "0.0.14",
@@ -12,9 +12,9 @@
   "permissions": [
     {
       "name": "network",
-      "desc": "Receives live workout readings from the Pace Rail iPhone app, either directly on the device or through the pace.grannis.xyz relay.",
+      "desc": "Receives live workout readings from the Splitglass iPhone app, either directly on the device or through the splitglass.grannis.xyz relay.",
       "whitelist": [
-        "https://pace.grannis.xyz",
+        "https://splitglass.grannis.xyz",
         "http://127.0.0.1:8734"
       ]
     },

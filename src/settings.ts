@@ -1,8 +1,8 @@
-import type { PaceRailSettings, Plan, GlassesScreen, Units } from './types'
+import type { SplitglassSettings, Plan, GlassesScreen, Units } from './types'
 import { openPlan } from './workout'
 
-const KEY = 'pacerail.settings.v1'
-const PLAN_KEY = 'pacerail.plan.v1'
+const KEY = 'splitglass.settings.v1'
+const PLAN_KEY = 'splitglass.plan.v1'
 
 function randomCode(): string {
   // Ambiguous glyphs left out: this gets typed into a phone by a person who has
@@ -13,7 +13,7 @@ function randomCode(): string {
   return out
 }
 
-const DEFAULTS: PaceRailSettings = {
+const DEFAULTS: SplitglassSettings = {
   pairCode: '',
   units: 'mi',
   maxHeartRate: 185,
@@ -25,7 +25,7 @@ const DEFAULTS: PaceRailSettings = {
   planName: 'Open run',
 }
 
-export function loadSettings(): PaceRailSettings {
+export function loadSettings(): SplitglassSettings {
   let parsed: Record<string, unknown> = {}
   try {
     const raw = localStorage.getItem(KEY)
@@ -33,7 +33,7 @@ export function loadSettings(): PaceRailSettings {
   } catch { /* fall through to defaults */ }
 
   const screens: GlassesScreen[] = ['run', 'splits', 'zones', 'map']
-  const settings: PaceRailSettings = {
+  const settings: SplitglassSettings = {
     pairCode: typeof parsed.pairCode === 'string' && /^[A-Z0-9]{6}$/.test(parsed.pairCode)
       ? parsed.pairCode : randomCode(),
     units: parsed.units === 'km' ? 'km' : 'mi',
@@ -55,11 +55,11 @@ export function loadSettings(): PaceRailSettings {
   return settings
 }
 
-export function saveSettings(settings: PaceRailSettings): void {
+export function saveSettings(settings: SplitglassSettings): void {
   try { localStorage.setItem(KEY, JSON.stringify(settings)) } catch { /* private mode */ }
 }
 
-export function updateSetting<K extends keyof PaceRailSettings>(key: K, value: PaceRailSettings[K]): PaceRailSettings {
+export function updateSetting<K extends keyof SplitglassSettings>(key: K, value: SplitglassSettings[K]): SplitglassSettings {
   const settings = loadSettings()
   settings[key] = value
   saveSettings(settings)
@@ -88,7 +88,7 @@ export function unitsLabel(units: Units): string {
 
 // The packaged WebView's own localStorage does not survive a cold launch, so the
 // host's storage is mirrored alongside it. Same trick as LotH.
-export const HOST_KEYS = { settings: 'pacerail.settings', plan: 'pacerail.plan' } as const
+export const HOST_KEYS = { settings: 'splitglass.settings', plan: 'splitglass.plan' } as const
 
 export function exportState(): { settings: string; plan: string } {
   return { settings: JSON.stringify(loadSettings()), plan: JSON.stringify(loadPlan()) }

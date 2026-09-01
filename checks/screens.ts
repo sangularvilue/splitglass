@@ -21,7 +21,7 @@ import {
 import { getTextWidth, measureTextWrap } from '@evenrealities/pretext'
 
 import { buildScreen, SCREEN_ORDER } from '../src/screens'
-import type { GlassesScreen, PaceRailSettings, Snapshot, TransportKind, ZoneState } from '../src/types'
+import type { GlassesScreen, SplitglassSettings, Snapshot, TransportKind, ZoneState } from '../src/types'
 import type { WorkoutView } from '../src/workout'
 import { createEngine, intervalPlan } from '../src/workout'
 
@@ -35,7 +35,7 @@ function fail(msg: string): void { failures++; console.log(`  FAIL  ${msg}`) }
 
 // ── Fixtures ──
 
-const settings: PaceRailSettings = {
+const settings: SplitglassSettings = {
   pairCode: 'H4KQ7M',
   units: 'mi',
   maxHeartRate: 185,

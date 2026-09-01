@@ -17,8 +17,8 @@ import os
 ///   GET /health  → {"ok":true}
 ///   GET /state   → {"snapshot":{...}}
 final class LocalServer {
-    private let log = Logger(subsystem: "xyz.grannis.pacerail", category: "local")
-    private let queue = DispatchQueue(label: "xyz.grannis.pacerail.local")
+    private let log = Logger(subsystem: "xyz.grannis.splitglass", category: "local")
+    private let queue = DispatchQueue(label: "xyz.grannis.splitglass.local")
     private var listener: NWListener?
     private let bodyProvider: () -> Data
 
@@ -95,7 +95,7 @@ final class LocalServer {
 
         switch path {
         case "/health":
-            return Self.http(status: "200 OK", body: Data(#"{"ok":true,"app":"pacerail"}"#.utf8))
+            return Self.http(status: "200 OK", body: Data(#"{"ok":true,"app":"splitglass"}"#.utf8))
         case "/state":
             return Self.http(status: "200 OK", body: bodyProvider())
         default:
