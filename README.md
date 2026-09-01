@@ -30,12 +30,34 @@ is carried by `textColor` (0–4) and by position. A two-line tile in a single
 container is the unit of layout, because that is what keeps a column aligned
 under a proportional font.
 
+## Workouts
+
+| group | built-ins |
+|---|---|
+| Distance | 5K, 10K, Half, Marathon — cut into whole miles or km plus a finish step |
+| Time | 30, 45, 60, 90 min, Open run |
+| Intervals | 8×400m, 6×800m, 4×1mi, Tempo 20 |
+| Zones | Ladder (5 Z1 / 20 Z2 / 3 Z4 / 2 Z5), Easy Z2, Threshold 4×6, Pyramid |
+
+Custom: an interval builder, and a zone-block field that takes `5@1 20@2 3@4 2@5`
+(minutes at zone, in display zones). **Save to library** keeps it under its own
+name, mirrored to host storage so it survives a packaged cold launch.
+
+Zone steps are timed steps with a zone to hold — the clock runs whether or not you
+are in the zone, and the HUD says `hold Z2 ✓`, `· ease` or `· push`. A target is
+clamped to the zone count Health actually reported, so a five-zone preset still
+works for someone with three or seven.
+
+The (i) button on the Plan card opens the zone reference: feel, purpose and share
+of weekly time per zone.
+
 ## Layout
 
 ```
 src/types.ts      the wire contract, twinned with ios/Shared/Snapshot.swift
 src/wire.ts       parsing, defensive: a bad field costs one number, never a throw
 src/workout.ts    the reducer — plan, step progress, splits. Pure.
+src/library.ts    built-in workouts, saved workouts, the zone guide
 src/zones.ts      zone presentation, plus the last-resort fallback
 src/screens.ts    every screen as data. Pure, so it can be checked.
 src/glasses.ts    pages, page turns, gestures, the long-press menu, image sends

@@ -218,13 +218,13 @@ function stepBlock(view: WorkoutView, settings: SplitglassSettings): string {
 
   const head = `${p.step.label}  (${p.index + 1}/${p.total})  ${left}`
 
-  const hold = p.step.easy
-    ? 'easy'
-    : p.step.holdPaceSecPerKm
-      ? `hold ${fmtPace(p.step.holdPaceSecPerKm.from, u)}–${fmtPace(p.step.holdPaceSecPerKm.to, u)}${paceUnitLabel(u)}`
-      : p.step.holdZone != null
-        ? `hold ${zoneLabel(p.step.holdZone)}`
-        : ''
+  // Zone before easy: a zone workout marks its Z1 blocks easy, and the zone is
+  // the more useful of the two things to say.
+  const hold = p.step.holdPaceSecPerKm
+    ? `hold ${fmtPace(p.step.holdPaceSecPerKm.from, u)}–${fmtPace(p.step.holdPaceSecPerKm.to, u)}${paceUnitLabel(u)}`
+    : p.step.holdZone != null
+      ? zoneHold(p.step.holdZone, view)
+      : p.step.easy ? 'easy' : ''
 
   const next = p.next ? `next: ${p.next.label}` : 'last step'
 
@@ -233,6 +233,23 @@ function stepBlock(view: WorkoutView, settings: SplitglassSettings): string {
     [hold, next].filter(Boolean).join('  ·  '),
     progressGlyphs(p.fraction, 20),
   ], SCREEN_W - 12)
+}
+
+/**
+ * What to do about the zone you are in.
+ *
+ * A target written for five zones has to survive a wearer whose Health settings
+ * give them seven or three, so the target is clamped to whatever HealthKit
+ * actually reported. `ease` and `push` rather than arrows: an arrow is ambiguous
+ * about whether it means your heart rate or your effort.
+ */
+function zoneHold(target: number, view: WorkoutView): string {
+  const z = view.zones
+  const capped = z ? Math.min(target, z.count - 1) : target
+  const label = `hold ${zoneLabel(capped)}`
+  if (!z || z.currentIndex == null) return label
+  if (z.currentIndex === capped) return `${label} ✓`
+  return z.currentIndex > capped ? `${label} · ease` : `${label} · push`
 }
 
 function progressGlyphs(fraction: number, width: number): string {

@@ -8,9 +8,14 @@
  */
 
 import './styles.css'
-import type { GlassesScreen, SplitglassSettings, Plan, Snapshot, TransportKind, Units } from './types'
+import type { GlassesScreen, SplitglassSettings, Plan, Snapshot, TransportKind } from './types'
 import { loadPlan, loadSettings, savePlan, updateSetting, exportState, importState, HOST_KEYS } from './settings'
-import { createEngine, intervalPlan, openPlan, steadyPlan, type WorkoutView } from './workout'
+import { createEngine, intervalPlan, zonePlan, type WorkoutView } from './workout'
+import {
+  BUILT_INS, GROUP_LABELS, ZONE_GUIDE, ZONE_GUIDE_NOTE,
+  builtIn, deleteWorkout, loadSaved, parseZoneBlocks, saveWorkout,
+  type LibraryGroup,
+} from './library'
 import { createTransport, serverOrigin } from './transport'
 import { createGlasses } from './glasses'
 import { createTrack, renderMap } from './map'
@@ -118,14 +123,15 @@ function shell(): string {
   </section>
 
   <section class="card">
-    <div class="card-h">Plan <span class="card-h-sub" id="plan-name"></span></div>
-    <div class="presets">
-      <button class="btn" data-preset="open">Open run</button>
-      <button class="btn" data-preset="units">Unit splits</button>
-      <button class="btn" data-preset="400s">8 × 400m</button>
-      <button class="btn" data-preset="mile">4 × 1 mile</button>
-      <button class="btn" data-preset="tempo">20 min tempo</button>
+    <div class="card-h row-h">
+      <span>Plan <span class="card-h-sub" id="plan-name"></span></span>
+      <button class="btn mini" id="zone-info" aria-expanded="false" aria-controls="guide" title="Heart-rate zones">i</button>
     </div>
+
+    <div class="guide" id="guide" hidden></div>
+    <div class="lib" id="lib"></div>
+    <div class="saved" id="saved"></div>
+
     <div class="builder">
       <label>Reps <input id="b-reps" type="number" min="1" max="40" value="8"></label>
       <label>Work
@@ -137,8 +143,19 @@ function shell(): string {
         <input id="b-rec" type="number" min="0" max="3600" value="90">
       </label>
       <label>Hold pace <input id="b-pace-from" placeholder="6:20" size="5"> – <input id="b-pace-to" placeholder="6:40" size="5"></label>
-      <button class="btn solid" id="b-build">Build</button>
+      <button class="btn solid" id="b-build">Intervals</button>
     </div>
+
+    <div class="builder">
+      <label>Zone blocks <input id="b-zones" placeholder="5@1 20@2 3@4 2@5" size="16"></label>
+      <button class="btn solid" id="b-zbuild">Blocks</button>
+    </div>
+
+    <div class="builder">
+      <label>Name <input id="b-name" placeholder="My session" size="14"></label>
+      <button class="btn" id="b-save">Save to library</button>
+    </div>
+
     <ol class="steps" id="plan-steps"></ol>
   </section>
 
@@ -261,6 +278,52 @@ function paintLive(): void {
   }
 }
 
+function paintLibrary(): void {
+  const el = $('lib')
+  if (!el) return
+  const groups: LibraryGroup[] = ['distance', 'time', 'intervals', 'zones']
+  el.innerHTML = groups.map(group => `
+    <div class="lib-row">
+      <span class="lib-g">${esc(GROUP_LABELS[group])}</span>
+      <div class="lib-b">${BUILT_INS.filter(b => b.group === group)
+        .map(b => `<button class="btn" data-builtin="${esc(b.id)}">${esc(b.label)}</button>`)
+        .join('')}</div>
+    </div>`).join('')
+}
+
+function paintSaved(): void {
+  const el = $('saved')
+  if (!el) return
+  const saved = loadSaved()
+  if (saved.length === 0) { el.innerHTML = ''; return }
+  el.innerHTML = `
+    <div class="lib-row">
+      <span class="lib-g">Yours</span>
+      <div class="lib-b">${saved.map(s => `
+        <span class="chip">
+          <button class="btn chip-load" data-load="${esc(s.id)}">${esc(s.plan.name)}</button>
+          <button class="btn chip-del" data-del="${esc(s.id)}" title="Delete">×</button>
+        </span>`).join('')}</div>
+    </div>`
+}
+
+function paintGuide(): void {
+  const el = $('guide')
+  if (!el) return
+  el.innerHTML = `
+    <table class="gt">
+      <thead><tr><th>Zone</th><th>Feel</th><th>Purpose</th><th>Week</th></tr></thead>
+      <tbody>${ZONE_GUIDE.map(r => `
+        <tr>
+          <td class="gz">Z${r.zone}<span>${esc(r.name)}</span></td>
+          <td>${esc(r.feel)}</td>
+          <td>${esc(r.purpose)}</td>
+          <td class="gw">${esc(r.week)}</td>
+        </tr>`).join('')}</tbody>
+    </table>
+    <p class="fine">${esc(ZONE_GUIDE_NOTE)}</p>`
+}
+
 function paintPlan(): void {
   const name = $('plan-name')
   if (name) name.textContent = plan.name
@@ -346,6 +409,7 @@ function paint(): void {
   paintStatus()
   paintLive()
   paintPlan()
+  paintSaved()
   paintMirror()
 }
 
@@ -369,6 +433,7 @@ function mirrorToHost(): void {
   const state = exportState()
   void b.setLocalStorage(HOST_KEYS.settings, state.settings)
   void b.setLocalStorage(HOST_KEYS.plan, state.plan)
+  void b.setLocalStorage(HOST_KEYS.library, state.library)
 }
 
 function setPlan(next: Plan): void {
@@ -434,36 +499,68 @@ function wire(): void {
     void transport.restart()
   })
 
-  document.querySelectorAll('[data-preset]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const which = (el as HTMLElement).dataset.preset
-      const u: Units = settings.units
-      if (which === 'open') setPlan(openPlan())
-      else if (which === 'units') setPlan(steadyPlan(u === 'mi' ? 'Mile splits' : 'Km splits', 13, u))
-      else if (which === '400s') setPlan(intervalPlan({
-        name: '8 × 400m', reps: 8,
-        work: { by: 'distance', metres: 400 },
-        recovery: { by: 'time', seconds: 90 },
-        warmupSeconds: 600, cooldownSeconds: 600,
-      }))
-      else if (which === 'mile') setPlan(intervalPlan({
-        name: '4 × 1 mile', reps: 4,
-        work: { by: 'distance', metres: 1609 },
-        recovery: { by: 'time', seconds: 180 },
-        warmupSeconds: 900, cooldownSeconds: 600,
-      }))
-      else if (which === 'tempo') setPlan({
-        name: '20 min tempo',
-        steps: [
-          { label: 'Warm-up', target: { by: 'time', seconds: 900 }, easy: true },
-          { label: 'Tempo', target: { by: 'time', seconds: 1200 } },
-          { label: 'Cool-down', target: { by: 'time', seconds: 600 }, easy: true },
-        ],
-      })
-    })
+  // Delegated, because both grids are re-rendered whenever the library changes.
+  $('lib')?.addEventListener('click', (e) => {
+    const id = (e.target as HTMLElement)?.closest('[data-builtin]')?.getAttribute('data-builtin')
+    if (!id) return
+    const entry = builtIn(id)
+    if (entry) setPlan(entry.build(settings.units))
+  })
+
+  $('saved')?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement
+    const loadId = target.closest('[data-load]')?.getAttribute('data-load')
+    if (loadId) {
+      const found = loadSaved().find(s => s.id === loadId)
+      if (found) setPlan(found.plan)
+      return
+    }
+    const delId = target.closest('[data-del]')?.getAttribute('data-del')
+    if (delId) {
+      const found = loadSaved().find(s => s.id === delId)
+      deleteWorkout(delId)
+      log(`Deleted ${found?.plan.name ?? delId}`)
+      mirrorToHost()
+      paintSaved()
+    }
+  })
+
+  $('zone-info')?.addEventListener('click', () => {
+    const guide = $('guide')
+    const button = $('zone-info')
+    if (!guide || !button) return
+    const showing = guide.hidden
+    guide.hidden = !showing
+    button.setAttribute('aria-expanded', String(showing))
   })
 
   $('b-build')?.addEventListener('click', () => setPlan(buildFromForm()))
+
+  $('b-zbuild')?.addEventListener('click', () => {
+    const field = $('b-zones') as HTMLInputElement | null
+    const text = field?.value ?? ''
+    const zoneCount = view.zones?.count ?? 5
+    const blocks = parseZoneBlocks(text, zoneCount)
+    if (blocks.length === 0) {
+      log(`Could not read "${text}" — write it as minutes@zone, e.g. 5@1 20@2 3@4 2@5`)
+      return
+    }
+    const name = (($('b-name') as HTMLInputElement | null)?.value || '').trim()
+    setPlan(zonePlan(name || `Zones ${blocks.map(b => `${b.minutes}@${b.zone + 1}`).join(' ')}`, blocks))
+  })
+
+  $('b-save')?.addEventListener('click', () => {
+    const named = (($('b-name') as HTMLInputElement | null)?.value || '').trim()
+    const toSave: Plan = named ? { ...plan, name: named } : plan
+    saveWorkout(toSave)
+    plan = toSave
+    savePlan(toSave)
+    settings = loadSettings()
+    log(`Saved ${toSave.name}`)
+    mirrorToHost()
+    paintSaved()
+    paintPlan()
+  })
 
   $('gpx')?.addEventListener('change', async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0]
@@ -511,6 +608,8 @@ async function boot(): Promise<void> {
   if (!app) return
   app.innerHTML = shell()
   syncSettingsControls()
+  paintLibrary()
+  paintGuide()
   wire()
   paint()
   paintMapPreview()
@@ -522,12 +621,13 @@ async function boot(): Promise<void> {
     const b = glasses.bridge()!
     // The packaged WebView's localStorage does not survive a cold launch, so
     // pull the host copy back before anything else reads settings.
-    const [hostSettings, hostPlan] = await Promise.all([
+    const [hostSettings, hostPlan, hostLibrary] = await Promise.all([
       b.getLocalStorage(HOST_KEYS.settings).catch(() => null),
       b.getLocalStorage(HOST_KEYS.plan).catch(() => null),
+      b.getLocalStorage(HOST_KEYS.library).catch(() => null),
     ])
-    if (hostSettings || hostPlan) {
-      importState(hostSettings, hostPlan)
+    if (hostSettings || hostPlan || hostLibrary) {
+      importState(hostSettings, hostPlan, hostLibrary)
       settings = loadSettings()
       plan = loadPlan()
       syncSettingsControls()

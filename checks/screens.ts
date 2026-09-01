@@ -23,7 +23,7 @@ import { getTextWidth, measureTextWrap } from '@evenrealities/pretext'
 import { buildScreen, SCREEN_ORDER } from '../src/screens'
 import type { GlassesScreen, SplitglassSettings, Snapshot, TransportKind, ZoneState } from '../src/types'
 import type { WorkoutView } from '../src/workout'
-import { createEngine, intervalPlan } from '../src/workout'
+import { createEngine, intervalPlan, zonePlan } from '../src/workout'
 
 const LINE_HEIGHT = 27
 const SCREEN_W = 576
@@ -49,13 +49,13 @@ const settings: SplitglassSettings = {
 
 // Nine zones is the most HealthKit allows, and the widest zone rows we can be
 // handed; the run screen's sparkline has to survive it too.
-function zones(count: number, source: 'apple' | 'computed'): ZoneState {
+function zones(count: number, source: 'apple' | 'computed', current?: number): ZoneState {
   const boundaries: number[] = []
   for (let i = 1; i < count; i++) boundaries.push(Math.round(95 + i * (95 / count) * 1.8))
   return {
     source,
     count,
-    currentIndex: Math.min(count - 1, 3),
+    currentIndex: current ?? Math.min(count - 1, 3),
     boundaries,
     durations: Array.from({ length: count }, (_, i) => 120 + i * 97),
   }
@@ -104,6 +104,25 @@ function busyView(over: Partial<Snapshot> = {}): WorkoutView {
     }))
   }
   return engine.view()
+}
+
+/**
+ * Mid-way through a zone workout, so the step line carries a zone target and
+ * whatever the compliance hint has to say about it.
+ */
+function zoneStepView(current?: number): WorkoutView {
+  const plan = zonePlan('Zone ladder', [
+    { zone: 0, minutes: 5 },
+    { zone: 1, minutes: 20 },
+    { zone: 3, minutes: 3 },
+    { zone: 4, minutes: 2 },
+  ])
+  const engine = createEngine({ getPlan: () => plan, getMaxHeartRate: () => settings.maxHeartRate })
+  let view = engine.view()
+  for (let t = 0; t <= 1000; t += 10) {
+    view = engine.ingest(snapshot({ seq: t, elapsed: t, distance: t * 3.4, zones: zones(5, 'apple', current) }))
+  }
+  return view
 }
 
 const emptyView: WorkoutView = {
@@ -247,6 +266,14 @@ checkSpec('run (km units)', 'run', busyView(), 'stream', mapReady)
 for (const screen of SCREEN_ORDER) {
   checkSpec(`${screen} (km)`, screen, busyView(), 'stream', mapReady)
 }
+
+console.log('\nscreens, zone workouts:')
+// In zone, above it, below it, and a wearer whose Health settings give them only
+// three zones so the preset's Z4 target has to be clamped.
+checkSpec('run (zone step, in zone)', 'run', zoneStepView(1), 'stream', mapReady)
+checkSpec('run (zone step, ease off)', 'run', zoneStepView(4), 'stream', mapReady)
+checkSpec('run (zone step, push)', 'run', zoneStepView(0), 'stream', mapReady)
+checkSpec('splits (zone workout)', 'splits', zoneStepView(1), 'stream', mapReady)
 
 console.log(failures === 0 ? '\nOK — every screen fits' : `\n${failures} failure(s)`)
 process.exit(failures === 0 ? 0 : 1)

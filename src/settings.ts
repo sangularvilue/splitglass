@@ -1,5 +1,6 @@
 import type { SplitglassSettings, Plan, GlassesScreen, Units } from './types'
 import { openPlan } from './workout'
+import { exportLibrary, importLibrary } from './library'
 
 const KEY = 'splitglass.settings.v1'
 const PLAN_KEY = 'splitglass.plan.v1'
@@ -88,13 +89,22 @@ export function unitsLabel(units: Units): string {
 
 // The packaged WebView's own localStorage does not survive a cold launch, so the
 // host's storage is mirrored alongside it. Same trick as LotH.
-export const HOST_KEYS = { settings: 'splitglass.settings', plan: 'splitglass.plan' } as const
+export const HOST_KEYS = {
+  settings: 'splitglass.settings',
+  plan: 'splitglass.plan',
+  library: 'splitglass.library',
+} as const
 
-export function exportState(): { settings: string; plan: string } {
-  return { settings: JSON.stringify(loadSettings()), plan: JSON.stringify(loadPlan()) }
+export function exportState(): { settings: string; plan: string; library: string } {
+  return {
+    settings: JSON.stringify(loadSettings()),
+    plan: JSON.stringify(loadPlan()),
+    library: exportLibrary(),
+  }
 }
 
-export function importState(settings: string | null, plan: string | null): void {
+export function importState(settings: string | null, plan: string | null, library: string | null): void {
   try { if (settings) localStorage.setItem(KEY, settings) } catch { /* ignore */ }
   try { if (plan) localStorage.setItem(PLAN_KEY, plan) } catch { /* ignore */ }
+  importLibrary(library)
 }

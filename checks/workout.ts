@@ -4,7 +4,9 @@
  * likely to be wrong and the part hardest to debug while running.
  */
 
-import { createEngine, intervalPlan, openPlan, steadyPlan } from '../src/workout'
+import { createEngine, distancePlan, intervalPlan, openPlan, steadyPlan, timePlan, zonePlan } from '../src/workout'
+import { BUILT_INS, parseZoneBlocks, ZONE_GUIDE } from '../src/library'
+import { METRES_PER_MILE } from '../src/format'
 import { parseSnapshot } from '../src/wire'
 import { computedZones, zoneForHeartRate, zoneRangeLabel } from '../src/zones'
 import { fmtPace, parsePace, paceFrom } from '../src/format'
@@ -168,6 +170,118 @@ console.log('\nwire:')
   })
   check('a 3-zone payload is accepted', good?.zones?.count === 3 && good.zones.source === 'apple')
   check('indoor survives the wire', good?.indoor === true)
+}
+
+// ── The library ──
+console.log('\nbuilt-in library:')
+{
+  check('every group is represented', new Set(BUILT_INS.map(b => b.group)).size === 4)
+  check('ids are unique', new Set(BUILT_INS.map(b => b.id)).size === BUILT_INS.length)
+
+  let bad = 0
+  for (const entry of BUILT_INS) {
+    for (const units of ['mi', 'km'] as const) {
+      const built = entry.build(units)
+      const problems: string[] = []
+      if (!built.name.trim()) problems.push('no name')
+      if (built.steps.length === 0) problems.push('no steps')
+      for (const step of built.steps) {
+        if (!step.label.trim()) problems.push('unlabelled step')
+        const amount = step.target.by === 'time' ? step.target.seconds : step.target.metres
+        if (!Number.isFinite(amount) || amount <= 0) problems.push(`bad target ${amount}`)
+        // holdZone is 0-based and HealthKit allows 3-9 zones; a preset must not
+        // aim at a zone that cannot exist.
+        if (step.holdZone != null && (step.holdZone < 0 || step.holdZone > 8)) {
+          problems.push(`holdZone ${step.holdZone} out of range`)
+        }
+      }
+      if (problems.length) { bad++; console.log(`  FAIL  ${entry.id}/${units}: ${problems.join(', ')}`) }
+    }
+  }
+  check('all built-ins build cleanly in both unit systems', bad === 0, `${bad} bad`)
+
+  // The one Will asked for by name.
+  const ladder = BUILT_INS.find(b => b.id === 'z-ladder')!.build('mi')
+  check('Ladder is 5 Z1 / 20 Z2 / 3 Z4 / 2 Z5',
+    ladder.steps.length === 4
+    && ladder.steps.every(s => s.target.by === 'time')
+    && ladder.steps.map(s => s.target.by === 'time' ? s.target.seconds / 60 : 0).join(',') === '5,20,3,2'
+    && ladder.steps.map(s => s.holdZone).join(',') === '0,1,3,4',
+    JSON.stringify(ladder.steps.map(s => [s.holdZone, s.target])))
+}
+
+console.log('\nset distance and time:')
+{
+  const fiveK = distancePlan('5K', 5000, 'km')
+  check('5K in km is 5 steps', fiveK.steps.length === 5, `${fiveK.steps.length}`)
+  check('5K in km has no remainder step', !fiveK.steps.some(s => s.label === 'Finish'))
+
+  const fiveKmi = distancePlan('5K', 5000, 'mi')
+  check('5K in miles is 3 miles plus a finish', fiveKmi.steps.length === 4, `${fiveKmi.steps.length}`)
+  check('the finish step is the remainder',
+    Math.abs((fiveKmi.steps[3]!.target as { metres: number }).metres - (5000 - 3 * METRES_PER_MILE)) < 1)
+
+  const short = distancePlan('800m', 800, 'km')
+  check('a distance under one unit is a single step', short.steps.length === 1, `${short.steps.length}`)
+
+  const half = distancePlan('Half', 21_097.5, 'km')
+  check('a half marathon is 21 km plus a finish', half.steps.length === 22, `${half.steps.length}`)
+
+  const thirty = timePlan('30 min', 1800)
+  check('a set time is one step of that length',
+    thirty.steps.length === 1 && (thirty.steps[0]!.target as { seconds: number }).seconds === 1800)
+
+  // Ends when the distance is covered, on HealthKit distance alone.
+  const engine = createEngine({ getPlan: () => fiveK, getMaxHeartRate: () => 185 })
+  let view = engine.view()
+  for (let t = 0; t <= 1500; t += 5) view = engine.ingest(snap({ seq: t, elapsed: t, distance: t * 3.4 }))
+  check('a 5K plan completes on distance', view.planComplete && view.splits.length === 5, `${view.splits.length} splits`)
+}
+
+console.log('\nzone blocks:')
+{
+  const plan = zonePlan('Ladder', [
+    { zone: 0, minutes: 5 }, { zone: 1, minutes: 20 }, { zone: 3, minutes: 3 }, { zone: 4, minutes: 2 },
+  ])
+  check('blocks become timed steps with a zone to hold',
+    plan.steps.every(s => s.target.by === 'time') && plan.steps[2]!.holdZone === 3)
+  check('Z1 blocks are marked easy', plan.steps[0]!.easy === true)
+  check('Z4 blocks are not', plan.steps[2]!.easy === false)
+  check('default labels name the zone as displayed', plan.steps[1]!.label === 'Z2 · 20 min', plan.steps[1]!.label)
+
+  const engine = createEngine({ getPlan: () => plan, getMaxHeartRate: () => 185 })
+  let view = engine.view()
+  // The clock runs whether or not you are in the zone, so 30 minutes finishes it.
+  for (let t = 0; t <= 1810; t += 10) view = engine.ingest(snap({ seq: t, elapsed: t, distance: t * 3 }))
+  check('a 30-minute ladder completes on the clock', view.planComplete, `${view.splits.length} splits`)
+
+  // Parsing, in display zones (Z1..Zn), converted to 0-based holdZone.
+  check('parses the canonical form',
+    JSON.stringify(parseZoneBlocks('5@1, 20@2, 3@4, 2@5'))
+      === JSON.stringify([{ zone: 0, minutes: 5 }, { zone: 1, minutes: 20 }, { zone: 3, minutes: 3 }, { zone: 4, minutes: 2 }]),
+    JSON.stringify(parseZoneBlocks('5@1, 20@2, 3@4, 2@5')))
+  check('spaces work as separators', parseZoneBlocks('5@1 20@2').length === 2)
+  check('an explicit Z is allowed', parseZoneBlocks('10@z3').length === 1)
+  check('x and / work as the join', parseZoneBlocks('10x3 5/2').length === 2)
+  check('fractional minutes are allowed', parseZoneBlocks('1.5@2')[0]?.minutes === 1.5)
+  check('a zone above the count is dropped', parseZoneBlocks('10@7', 5).length === 0)
+  check('zone 0 is dropped', parseZoneBlocks('10@0').length === 0)
+  check('nonsense yields nothing', parseZoneBlocks('what even is this').length === 0)
+  check('garbage among good tokens is skipped', parseZoneBlocks('5@1 nope 20@2').length === 2)
+}
+
+console.log('\nzone guide:')
+{
+  check('one row per zone', ZONE_GUIDE.length === 5)
+  check('rows are numbered 1-5', ZONE_GUIDE.map(r => r.zone).join(',') === '1,2,3,4,5')
+  check('every row has feel, purpose and a weekly share',
+    ZONE_GUIDE.every(r => r.name && r.feel && r.purpose && /%/.test(r.week)))
+  // The weekly shares should add up to roughly a whole week.
+  const mid = ZONE_GUIDE.reduce((sum, r) => {
+    const [lo, hi] = r.week.replace('%', '').split('–').map(Number)
+    return sum + (lo + (hi ?? lo)) / 2
+  }, 0)
+  check('midpoints total near 100%', mid > 90 && mid < 110, `${mid.toFixed(0)}%`)
 }
 
 console.log(failures === 0 ? '\nOK' : `\n${failures} failure(s)`)

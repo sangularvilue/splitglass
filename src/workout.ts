@@ -14,7 +14,7 @@
 import type {
   Plan, PlanStep, Snapshot, Split, StepProgress, ZoneState, Units,
 } from './types'
-import { paceFrom } from './format'
+import { METRES_PER_MILE, paceFrom } from './format'
 import { computedZones, accumulate, zoneForHeartRate } from './zones'
 
 export type WorkoutView = {
@@ -309,7 +309,7 @@ export function intervalPlan(opts: {
 
 /** A steady run cut into unit splits, so the HUD counts down to each one. */
 export function steadyPlan(name: string, totalUnits: number, units: Units, holdPaceSecPerKm?: { from: number; to: number }): Plan {
-  const metres = units === 'mi' ? 1609.344 : 1000
+  const metres = units === 'mi' ? METRES_PER_MILE : 1000
   const steps: PlanStep[] = []
   for (let i = 1; i <= totalUnits; i++) {
     steps.push({
@@ -319,6 +319,64 @@ export function steadyPlan(name: string, totalUnits: number, units: Units, holdP
     })
   }
   return { name, steps }
+}
+
+/**
+ * A set distance, cut into whole units with a remainder step.
+ *
+ * A 5K in miles is three whole miles and a bit; the bit gets its own step so the
+ * HUD counts down to the finish rather than to the last full mile. Distance comes
+ * from HealthKit, so this works on a treadmill.
+ */
+export function distancePlan(name: string, totalMetres: number, units: Units): Plan {
+  const unit = units === 'mi' ? METRES_PER_MILE : 1000
+  const word = units === 'mi' ? 'Mile' : 'Km'
+  const steps: PlanStep[] = []
+
+  const whole = Math.floor(totalMetres / unit)
+  for (let i = 1; i <= whole; i++) {
+    steps.push({ label: `${word} ${i}`, target: { by: 'distance', metres: unit } })
+  }
+
+  // Anything under 20 m is rounding, not a split.
+  const remainder = totalMetres - whole * unit
+  if (remainder > 20) steps.push({ label: 'Finish', target: { by: 'distance', metres: remainder } })
+  if (steps.length === 0) steps.push({ label: name, target: { by: 'distance', metres: totalMetres } })
+
+  return { name, steps }
+}
+
+/** A set time, as one step. The HUD counts it down. */
+export function timePlan(name: string, seconds: number): Plan {
+  return { name, steps: [{ label: name, target: { by: 'time', seconds } }] }
+}
+
+export type ZoneBlock = {
+  /** 0-based, matching HealthKit. Z1 on the display is zone 0 here. */
+  zone: number
+  minutes: number
+  label?: string
+}
+
+/**
+ * Time in heart-rate zones: `5 min in Z1, 20 in Z2, 3 in Z4, 2 in Z5`.
+ *
+ * Each block is a timed step with a zone to hold, which is how structured
+ * workouts work everywhere else — the clock runs whether or not you are in the
+ * zone, and the HUD tells you to ease or push. Holding the step open until you
+ * had *accumulated* the time in zone would be the stricter reading, and it makes
+ * a session that can never end if you are having a bad day.
+ */
+export function zonePlan(name: string, blocks: ZoneBlock[]): Plan {
+  return {
+    name,
+    steps: blocks.map(block => ({
+      label: block.label ?? `Z${block.zone + 1} · ${block.minutes} min`,
+      target: { by: 'time', seconds: Math.round(block.minutes * 60) },
+      holdZone: block.zone,
+      easy: block.zone <= 1,
+    })),
+  }
 }
 
 /** No plan: one open-ended step, so the HUD still shows elapsed and pace. */

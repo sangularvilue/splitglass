@@ -217,6 +217,67 @@ html, body {
 
 /* ── plan ── */
 
+.row-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.btn.mini {
+  min-height: 26px;
+  width: 26px;
+  padding: 0;
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1;
+  color: var(--ink-2);
+}
+.btn.mini[aria-expanded="true"] { color: var(--live); border-color: var(--live-dim); }
+
+/* library */
+.lib, .saved { display: grid; gap: 8px; }
+.saved:empty { display: none; }
+.lib-row { display: grid; grid-template-columns: 74px 1fr; gap: 10px; align-items: start; }
+.lib-g {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-top: 13px;
+}
+.lib-b { display: flex; flex-wrap: wrap; gap: 6px; }
+.lib-b .btn { font-size: 13.5px; padding: 8px 11px; min-height: 36px; }
+
+.chip { display: inline-flex; }
+.chip .btn { border-radius: 0; }
+.chip-load { border-radius: 7px 0 0 7px !important; border-right-width: 0; }
+.chip-del {
+  border-radius: 0 7px 7px 0 !important;
+  padding: 8px 9px;
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1;
+}
+.chip-del:active { color: var(--bad); }
+
+/* zone guide */
+.guide { margin-bottom: 14px; overflow-x: auto; }
+.gt { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 13px; }
+.gt th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--edge);
+  padding: 0 10px 6px 0;
+}
+.gt td { vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule, var(--edge)); color: var(--ink-2); }
+.gt tbody tr:last-child td { border-bottom: 0; }
+.gz { white-space: nowrap; font-family: var(--mono); color: var(--live) !important; }
+.gz span { display: block; font-family: var(--sans); font-size: 11.5px; color: var(--ink-3); }
+.gw { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; color: var(--ink) !important; }
+
 .presets { display: flex; flex-wrap: wrap; gap: 8px; }
 .builder {
   display: flex;
