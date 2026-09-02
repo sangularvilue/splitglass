@@ -26,6 +26,8 @@
   <array>
     <string>workout-processing</string>
   </array>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>Splitglass records the route of an outdoor workout, so it appears on the map in Fitness.</string>
   <key>NSHealthShareUsageDescription</key>
   <string>Splitglass records your run with HealthKit and reads heart rate, heart-rate zone, distance and energy from it, so the same numbers Health keeps can be shown on your Even G2 glasses.</string>
   <key>NSHealthUpdateUsageDescription</key>

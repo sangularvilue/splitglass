@@ -24,6 +24,8 @@ final class MirrorReceiver: NSObject, ObservableObject {
     @Published var settings = SplitglassSettings.load()
 
     let store = SnapshotStore()
+    /// Per-second readings per workout, for History.
+    let traces = TraceStore()
 
     private let healthStore = HKHealthStore()
     private let log = Logger(subsystem: "xyz.grannis.splitglass", category: "mirror")
@@ -57,7 +59,9 @@ final class MirrorReceiver: NSObject, ObservableObject {
             HKQuantityType(.heartRate),
             HKQuantityType(.activeEnergyBurned),
             HKQuantityType(.distanceWalkingRunning),
+            HKQuantityType(.distanceCycling),
             HKObjectType.workoutType(),
+            HKSeriesType.workoutRoute(),
         ]
         do {
             try await healthStore.requestAuthorization(toShare: [], read: read)
@@ -88,6 +92,7 @@ final class MirrorReceiver: NSObject, ObservableObject {
 
     private func accept(_ snapshot: Snapshot) async {
         store.accept(snapshot)
+        traces.record(snapshot)
         receivedCount += 1
         await cloud.post(snapshot, settings: settings)
         lastRelayError = await cloud.lastError

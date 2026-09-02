@@ -22,6 +22,42 @@ The watch builds each `Snapshot` and pushes it over the mirroring data channel
 once a second. If mirroring never starts — phone left at home, iOS too old — the
 watch posts to the relay itself, so the HUD still works.
 
+## What lands in Fitness
+
+The workout is saved by `HKLiveWorkoutBuilder.finishWorkout()`, exactly as a
+third-party running app's is, and it should be indistinguishable from one started
+in the Workout app:
+
+| | how |
+|---|---|
+| Distance, energy, heart rate | `HKLiveWorkoutDataSource` — Apple's collector. Same GPS + pedometer fusion outdoors, same calibrated stride model on a treadmill. Nothing added. |
+| Map, elevation | `HKWorkoutRouteBuilder` fed by `CLLocationManager`, outdoor only, fixes worse than 50 m dropped. Attached after the workout is saved. |
+| Running power, stride, ground contact, vertical oscillation | enabled on the data source |
+| Auto-pause | outdoors, six seconds without the distance moving; resumes on the next few metres. Pause/resume land as workout events. Toggle on the watch. |
+| Indoor / outdoor | `HKWorkoutConfiguration.locationType` + `HKMetadataKeyIndoorWorkout` |
+| Heart-rate zones | Health's own configuration (iOS 27) — see below |
+
+What will differ: Fitness lists the source as **Splitglass**, as it does for every
+third-party app. Splits recorded by the glasses are not yet written back as lap
+events — that is the back-channel item.
+
+## Phone app
+
+Three tabs. **Live** — the chain (watch → loopback → relay) and the reading on the
+glasses now. **History** — every workout Health has, ours marked, with
+time-in-zone, a heart-rate chart, and for workouts this phone relayed, the pace
+trace as the glasses smoothed it. **Settings** — units, relay, zone fallback.
+
+```
+Phone/Theme.swift         palette, Card, Tile, TileGrid, ZoneBar, Format
+Phone/LiveView.swift
+Phone/HistoryStore.swift  HKWorkout queries; zones from zoneGroupsByType or estimated
+Phone/HistoryView.swift   list + detail with Swift Charts
+Phone/TraceStore.swift    per-second snapshots per workout, matched to HKWorkouts by time
+Phone/SettingsView.swift
+Phone/MirrorReceiver.swift, LocalServer.swift
+```
+
 ## Build
 
 ```bash

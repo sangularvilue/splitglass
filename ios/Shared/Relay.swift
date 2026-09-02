@@ -27,6 +27,9 @@ struct SplitglassSettings: Codable, Equatable {
     /// Fallback zones only: ignored whenever HealthKit has the user's own.
     var maxHeartRate: Double = 185
     var restingHeartRate: Double = 55
+    /// Pause the workout when you stop moving, outdoors. Apple's default.
+    var autoPause: Bool = true
+    var useMiles: Bool = true
 
     static let storageKey = "splitglass.settings"
 

@@ -45,6 +45,13 @@ struct WatchRootView: View {
                 Toggle("Indoor", isOn: $indoor)
                     .font(.caption)
 
+                Toggle("Auto-pause", isOn: Binding(
+                    get: { workout.settings.autoPause },
+                    set: { value in workout.settings.autoPause = value; workout.settings.save() }
+                ))
+                .font(.caption)
+                .disabled(indoor)
+
                 Button {
                     Task { await workout.start(activity: .running, indoor: indoor) }
                 } label: {

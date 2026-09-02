@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import HealthKit
 import os
@@ -11,6 +12,21 @@ import os
 /// runtime and can relay to the glasses; the snapshot itself is built here and
 /// pushed across, because the watch is where the truth is and mirroring's data
 /// channel is far quicker than waiting for samples to sync.
+///
+/// The workout that lands in Fitness should be indistinguishable from one
+/// started in the Workout app, so this does everything that app does:
+///
+///  - **Distance and energy** come from `HKLiveWorkoutDataSource` — Apple's own
+///    collector, so the same GPS + pedometer fusion outdoors and the same
+///    calibrated stride model on a treadmill. We add nothing to it.
+///  - **A route** is recorded with `HKWorkoutRouteBuilder` for outdoor workouts,
+///    so Fitness shows the map and elevation.
+///  - **Running form** — power, stride length, ground contact time, vertical
+///    oscillation — is switched on explicitly.
+///  - **Auto-pause** outdoors when you stop, as the Workout app does by default.
+///
+/// What will still differ: Fitness lists the source as Splitglass rather than
+/// Workout, as it does for every third-party app.
 @MainActor
 final class WorkoutManager: NSObject, ObservableObject {
 
@@ -55,6 +71,19 @@ final class WorkoutManager: NSObject, ObservableObject {
     /// whether it has to reach the relay itself.
     private var mirrorConfirmedAt: Date?
 
+    // The route Fitness draws. Outdoor only.
+    private let locationManager = CLLocationManager()
+    private var routeBuilder: HKWorkoutRouteBuilder?
+    private var routePoints = 0
+
+    // Auto-pause. Distance is the signal: it is sampled throughout a running
+    // workout and only ever goes up, where speed can simply stop arriving.
+    private var lastDistanceValue: Double?
+    private var lastDistanceMovedAt: Date?
+    private var autoPaused = false
+    private static let autoPauseAfter: TimeInterval = 6
+    private static let autoPauseMinMove: Double = 3
+
     private var typesToRead: Set<HKObjectType> {
         var types: Set<HKObjectType> = [
             HKQuantityType(.heartRate),
@@ -65,7 +94,20 @@ final class WorkoutManager: NSObject, ObservableObject {
             HKObjectType.activitySummaryType(),
         ]
         types.insert(HKQuantityType(.runningSpeed))
+        for type in Self.runningFormTypes { types.insert(type) }
         return types
+    }
+
+    /// The Workout app records these on Series 6 and later; so do we.
+    private static let runningFormTypes: [HKQuantityType] = [
+        HKQuantityType(.runningPower),
+        HKQuantityType(.runningStrideLength),
+        HKQuantityType(.runningGroundContactTime),
+        HKQuantityType(.runningVerticalOscillation),
+    ]
+
+    private var typesToShare: Set<HKSampleType> {
+        [HKObjectType.workoutType(), HKSeriesType.workoutRoute()]
     }
 
     // ── Authorisation ──
@@ -77,7 +119,7 @@ final class WorkoutManager: NSObject, ObservableObject {
         }
         phase = .requestingAuthorization
         do {
-            try await healthStore.requestAuthorization(toShare: [HKObjectType.workoutType()], read: typesToRead)
+            try await healthStore.requestAuthorization(toShare: typesToShare, read: typesToRead)
             await loadRestingHeartRate()
             phase = .idle
         } catch {
@@ -121,12 +163,20 @@ final class WorkoutManager: NSObject, ObservableObject {
         do {
             let session = try HKWorkoutSession(healthStore: healthStore, configuration: configuration)
             let builder = session.associatedWorkoutBuilder()
-            builder.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: configuration)
+            let dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: configuration)
+            // Apple's default set for running already covers distance, energy,
+            // heart rate and speed; the form metrics are opt-in.
+            for type in Self.runningFormTypes {
+                dataSource.enableCollection(for: type, predicate: nil)
+            }
+            builder.dataSource = dataSource
             session.delegate = self
             builder.delegate = self
 
             self.session = session
             self.builder = builder
+
+            if !indoor { startRoute() }
 
             // Zones must be arranged before collection starts.
             if #available(watchOS 27.0, *) {
@@ -173,13 +223,25 @@ final class WorkoutManager: NSObject, ObservableObject {
         guard let session, let builder else { return }
         phase = .ending
         stopPushing()
+        stopRoute()
         session.end()
         do {
             try await builder.endCollection(at: Date())
-            _ = try await builder.finishWorkout()
+            try await builder.addMetadata([HKMetadataKeyIndoorWorkout: indoor])
+            let workout = try await builder.finishWorkout()
+            // The route has to be attached to the saved workout, so it comes last.
+            if let workout, let routeBuilder, routePoints > 0 {
+                do {
+                    try await routeBuilder.finishRoute(with: workout, metadata: nil)
+                    log.info("route saved: \(self.routePoints) points")
+                } catch {
+                    log.error("saving the route failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
         } catch {
             log.error("finishing the workout failed: \(error.localizedDescription, privacy: .public)")
         }
+        routeBuilder = nil
         // One last reading, so the glasses show 'ended' rather than freezing on
         // the last live value.
         seq += 1
@@ -198,6 +260,57 @@ final class WorkoutManager: NSObject, ObservableObject {
         steps = nil
         zones = nil
         mirrorConfirmedAt = nil
+        lastDistanceValue = nil
+        lastDistanceMovedAt = nil
+        autoPaused = false
+        routePoints = 0
+    }
+
+    // ── Route ──
+
+    private func startRoute() {
+        routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.activityType = .fitness
+        locationManager.allowsBackgroundLocationUpdates = true
+        if locationManager.authorizationStatus == .notDetermined {
+            locationManager.requestWhenInUseAuthorization()
+        }
+        locationManager.startUpdatingLocation()
+    }
+
+    private func stopRoute() {
+        locationManager.stopUpdatingLocation()
+    }
+
+    // ── Auto-pause ──
+
+    /// Outdoors only, matching the Workout app's default. Six seconds without the
+    /// distance moving pauses; the next few metres resume. The pause and resume
+    /// land in the workout as events, so Fitness shows them.
+    private func evaluateAutoPause(now: Date = Date()) {
+        guard settings.autoPause, !indoor, let session else { return }
+        guard let distance else { return }
+
+        if let last = lastDistanceValue, distance - last >= Self.autoPauseMinMove {
+            lastDistanceValue = distance
+            lastDistanceMovedAt = now
+            if autoPaused, session.state == .paused {
+                session.resume()
+                autoPaused = false
+                log.info("auto-resume")
+            }
+            return
+        }
+        if lastDistanceValue == nil { lastDistanceValue = distance; lastDistanceMovedAt = now; return }
+
+        if session.state == .running, let movedAt = lastDistanceMovedAt,
+           now.timeIntervalSince(movedAt) >= Self.autoPauseAfter {
+            session.pause()
+            autoPaused = true
+            log.info("auto-pause")
+        }
     }
 
     // ── Pushing ──
@@ -218,6 +331,7 @@ final class WorkoutManager: NSObject, ObservableObject {
 
     private func tick() async {
         guard let session else { return }
+        evaluateAutoPause()
         let state: Snapshot.State
         switch session.state {
         case .running: state = .running
@@ -282,6 +396,32 @@ final class WorkoutManager: NSObject, ObservableObject {
         case .cycling: return .cycling
         case .hiking: return .hiking
         case .other: return .other
+        }
+    }
+}
+
+// ── Location delegate: the route ──
+
+extension WorkoutManager: CLLocationManagerDelegate {
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        // The Workout app is equally picky: a fix worse than 50 m draws a route
+        // that wanders through buildings.
+        let usable = locations.filter { $0.horizontalAccuracy > 0 && $0.horizontalAccuracy <= 50 }
+        guard !usable.isEmpty else { return }
+        Task { @MainActor in
+            guard let routeBuilder else { return }
+            do {
+                try await routeBuilder.insertRouteData(usable)
+                routePoints += usable.count
+            } catch {
+                log.debug("route insert failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        Task { @MainActor in
+            log.debug("location: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

@@ -23,15 +23,10 @@ import HealthKit
 /// sends no zone payload and the plugin falls back to its own estimate.
 enum ZoneReader {
 
-    /// Boundaries the SDK hands back, in beats per minute.
-    ///
-    /// `HKWorkoutZoneConfiguration` is created from `zoneBoundaries`, and reads
-    /// back the same way. If a future SDK renames this, it is the one line here
-    /// to change — everything else works off `zones.count` and the durations.
+    /// Boundaries the SDK hands back, in beats per minute. Shared with the phone.
     @available(watchOS 27.0, iOS 27.0, *)
     static func boundaries(of configuration: HKWorkoutZoneConfiguration) -> [Double] {
-        let bpm = HKUnit.count().unitDivided(by: .minute())
-        return configuration.zoneBoundaries.map { $0.doubleValue(for: bpm) }
+        ZoneConfigurationReading.boundaries(of: configuration)
     }
 
     /// Zones as computed from the wearer's own maximum and resting heart rate.
